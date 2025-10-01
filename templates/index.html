@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Web Terminal</title>
+    <!-- Include xterm.js library and addon for a better fit -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+    <!-- Include Socket.IO client library -->
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background-color: #000;
+            font-family: monospace, sans-serif;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+        #terminal {
+            flex-grow: 1;
+            height: 100%;
+        }
+        #flags-section {
+            background-color: #5a5a5a; /* Grey background from image */
+            padding: 20px;
+            display: flex;
+            justify-content: space-around; /* Evenly space the flag inputs */
+            align-items: center;
+            flex-shrink: 0; /* Prevent this section from shrinking */
+        }
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            color: white;
+        }
+        .input-group label {
+            margin-bottom: 8px;
+        }
+        .input-group input {
+            background-color: #3c3c3c; /* input box */
+            border: none;
+            padding: 10px;
+            width: 250px;
+            font-size: 16px;
+            color: white;
+        }
+    </style>
+</head>
+    
+<body>
+    <!-- The terminal will be rendered here -->
+    <div id="terminal"></div>
+
+    <!-- input fields -->
+    <div id="flags-section">
+        <div class="input-group">
+            <label for="flag1">flag #1</label>
+            <input type="text" id="flag1">
+        </div>
+        <div class="input-group">
+            <label for="flag2">flag #2</label>
+            <input type="text" id="flag2">
+        </div>
+        <div class="input-group">
+            <label for="flag3">flag #3</label>
+            <input type="text" id="flag3">
+        </div>
+    </div>
+    <script src="/static/main.js"></script>
+</body>
+</html>
