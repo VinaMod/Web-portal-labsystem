@@ -13,7 +13,7 @@ fitAddon.fit();
 window.addEventListener('resize', () => fitAddon.fit());
 
 // Initialize Socket.IO connection
-const socket = io();
+const socket = io("http://localhost:5000")
 
 // Handle incoming data from the server and write it to the terminal
 socket.on('pty_output', function(data) {
@@ -28,7 +28,8 @@ term.onData(function(data) {
 // Handle connection events
 socket.on('connect', () => {
     console.log('Connected to backend');
-    // You can send an initial message or command here if needed
+    fitAddon.fit();
+    sendTerminalSize();
 });
 
 socket.on('disconnect', () => {
@@ -60,3 +61,25 @@ term.onResize(() => {
 window.addEventListener('resize', () => {
     fitAddon.fit();
 });
+
+function checkFlag(flagNumber) {//checks the submitted flags.
+    // Define the correct answers
+    const correctFlags = {
+        1: "flag-1-collect-data",
+        2: "flag-2-upload-file",
+        3: "flag-3-read-system-file"
+    };
+
+    // Get the input element and its value
+    const inputElement = document.getElementById(`flag${flagNumber}`);
+    const userValue = inputElement.value.trim(); // .trim() removes whitespace
+
+    // Check if the user's value matches the correct flag
+    if (userValue === correctFlags[flagNumber]) {
+        // If correct, add the 'correct' class for the green border
+        inputElement.classList.add('correct');
+    } else {
+        // If incorrect, remove the class to clear the border
+        inputElement.classList.remove('correct');
+    }
+}

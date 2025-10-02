@@ -48,6 +48,18 @@
             font-size: 16px;
             color: white;
         }
+        .input-group button {
+            background-color: #3c3c3c;
+            border: 1px solid #777;
+            color: white;
+            padding: 8px;
+            margin-top: 10px;
+            cursor: pointer;
+            font-family: monospace, sans-serif;
+        }
+        .input-group input.correct {
+            border: 2px solid #4CAF50; /* Green border for correct flags */
+        }
     </style>
 </head>
     
@@ -60,14 +72,17 @@
         <div class="input-group">
             <label for="flag1">flag #1</label>
             <input type="text" id="flag1">
+            <button onclick="checkFlag(1)">Submit</button>
         </div>
         <div class="input-group">
             <label for="flag2">flag #2</label>
             <input type="text" id="flag2">
+            <button onclick="checkFlag(2)">Submit</button>
         </div>
         <div class="input-group">
             <label for="flag3">flag #3</label>
             <input type="text" id="flag3">
+            <button onclick="checkFlag(3)">Submit</button>
         </div>
     </div>
     <script src="/static/main.js"></script>
