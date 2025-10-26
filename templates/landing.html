@@ -87,7 +87,7 @@
         <h1>Labtainer Lab System</h1>
         <p>Web-based cybersecurity lab environment for hands-on learning</p>
         
-        <a href="/auth/login" class="btn">Login with .edu Account</a>
+        <a id="login-btn" href="/auth/login" class="btn" aria-label="Login with .edu Account">Login with .edu Account</a>
         
         <div class="features">
             <div class="feature">
@@ -104,5 +104,27 @@
             </div>
         </div>
     </div>
+    <script>
+        // If already authenticated, offer to go to dashboard and prefetch API token
+        (async () => {
+            try {
+                const res = await fetch('/api/auth/login');
+                if (res.ok) {
+                    const data = await res.json();
+                    // store token for API use
+                    try { sessionStorage.setItem('labtainer_token', data.token); } catch(e) {}
+                    const btn = document.getElementById('login-btn');
+                    if (btn) {
+                        btn.textContent = 'Go to Dashboard';
+                        btn.setAttribute('href', '/dashboard');
+                        btn.setAttribute('aria-label', 'Go to Dashboard');
+                    }
+                }
+            } catch (e) {
+                console.log("authen fail")
+                // ignore - user not logged in yet
+            }
+        })();
+    </script>
 </body>
 </html>

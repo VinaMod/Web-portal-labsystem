@@ -1,10 +1,11 @@
 from flask import session, render_template, request, jsonify, redirect, url_for
-from flask_login import current_user
+from flask_login import current_user, login_user
 from flask_socketio import SocketIO, emit, disconnect
 from app import app, db
 from replit_auth import require_login, make_replit_blueprint
-from models import Course, Lab, Enrollment, UserLab
+from models import Course, Lab, Enrollment, UserLab, User
 from labtainer_integration import clone_lab_template, rebuild_lab, start_lab, stop_lab
+from flask_dance.contrib.google import make_google_blueprint, google
 import os
 import pty
 import fcntl
@@ -18,6 +19,15 @@ import threading
 import subprocess
 
 app.register_blueprint(make_replit_blueprint(), url_prefix="/auth")
+if os.environ.get('GOOGLE_OAUTH_CLIENT_ID') and os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET'):
+    print("=================================================== start google login")
+    google_bp = make_google_blueprint(
+        client_id=os.environ['GOOGLE_OAUTH_CLIENT_ID'],
+        client_secret=os.environ['GOOGLE_OAUTH_CLIENT_SECRET'],
+        scope=["profile", "email"],
+        redirect_url="/auth/google/authorized"
+    )
+    app.register_blueprint(google_bp, url_prefix="/auth")
 
 @app.before_request
 def make_session_permanent():
@@ -38,6 +48,13 @@ def index():
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
     return render_template('landing.html')
+
+@app.route('/auth/login')
+def auth_login_redirect():
+    print("============================================================= " + app.blueprints);
+    if 'google' in app.blueprints:
+        return redirect(url_for('google.login'))
+    return redirect(url_for('replit_auth.login'))
 
 @app.route('/dashboard')
 @require_login
@@ -277,6 +294,36 @@ def init_sample_data():
     db.session.commit()
     
     return jsonify({'status': 'success'})
+
+@app.route('/auth/google/authorized')
+def google_authorized_landing():
+    if not google.authorized:
+        return redirect(url_for('google.login'))
+    resp = google.get('/oauth2/v2/userinfo')
+    if not resp.ok:
+        return redirect(url_for('replit_auth.error'))
+    info = resp.json() or {}
+    email = info.get('email') or ''
+    if not email.endswith('.edu'):
+        return redirect(url_for('replit_auth.error'))
+    user = User.query.get(info.get('id'))
+    if not user:
+        user = User(
+            id=str(info.get('id')),
+            email=email,
+            first_name=info.get('given_name'),
+            last_name=info.get('family_name'),
+            profile_image_url=info.get('picture')
+        )
+        db.session.add(user)
+    else:
+        user.email = email
+        user.first_name = info.get('given_name')
+        user.last_name = info.get('family_name')
+        user.profile_image_url = info.get('picture')
+    db.session.commit()
+    login_user(user)
+    return redirect(url_for('dashboard'))
 
 # ===== JWT + JSON API (Option A) =====
 
