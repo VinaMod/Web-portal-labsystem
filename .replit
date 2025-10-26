@@ -38,5 +38,5 @@ localPort = 42643
 externalPort = 3000
 
 [deployment]
-deploymentTarget = "autoscale"
-run = ["python3", "app.py"]
+deploymentTarget = "vm"
+run = ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:5000", "main:app"]
