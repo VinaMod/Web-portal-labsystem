@@ -13,7 +13,7 @@ fitAddon.fit();
 window.addEventListener('resize', () => fitAddon.fit());
 
 // Initialize Socket.IO connection
-const socket = io("http://localhost:5000")
+const socket = io()
 
 // Handle incoming data from the server and write it to the terminal
 socket.on('pty_output', function(data) {

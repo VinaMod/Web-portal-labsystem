@@ -1,2 +1,5 @@
 aiohttp
 python-socketio
+aiohttp
+python-socketio
+socketio
