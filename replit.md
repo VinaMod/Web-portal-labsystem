@@ -161,12 +161,26 @@ Visit `/init_sample_data` while logged in to populate the database with:
 ✅ Token refresh handling
 ✅ Isolated bash shells per user session
 
-### Important Notes
+### ⚠️ CRITICAL: NOT PRODUCTION READY
+**Do NOT deploy this to production or give access to untrusted users.**
+
+This is a development/prototype implementation with known security vulnerabilities:
+- ❌ Path traversal possible in lab operations
+- ❌ Command injection risk in Labtainer commands
+- ❌ WebSocket authentication incomplete
+- ❌ Lab provisioning lacks transaction safety
+- ❌ Terminal doesn't actually enter Labtainer containers
+- ❌ No input sanitization on folder names
+- ❌ Status updates not verified against actual state
+
+**See KNOWN_LIMITATIONS.md for complete security analysis and remediation steps.**
+
+### Additional Important Notes
 ⚠️ Users get full bash shell access - only use in sandboxed environments
 ⚠️ SESSION_SECRET should be set in production (currently uses fallback)
 ⚠️ SQLite is suitable for development; consider PostgreSQL for production
 ⚠️ File system isolation between lab instances not yet implemented
-⚠️ Labtainer folder cloning currently simulated, not executed
+⚠️ Actual Labtainer integration requires production hardening
 
 ## Future Enhancements
 
