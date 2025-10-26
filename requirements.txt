@@ -1,5 +1,7 @@
-aiohttp
-python-socketio
-aiohttp
-python-socketio
-socketio
+flask
+flask-dance
+flask-login
+flask-socketio
+flask-sqlalchemy
+gunicorn
+pyjwt
