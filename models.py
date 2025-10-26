@@ -1,81 +1,113 @@
 from datetime import datetime
-from app import db
-from flask_dance.consumer.storage.sqla import OAuthConsumerMixin
-from flask_login import UserMixin
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import String, Integer, DateTime, ForeignKey, Enum as SQLEnum
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from typing import List
+import enum
 
-# Required tables for Replit Auth
-class User(UserMixin, db.Model):
+from database import db
+
+
+class LabStatus(enum.Enum):
+    ENROLLED = "ENROLLED"
+    STARTED = "STARTED"
+    COMPLETED = "COMPLETED"
+
+
+class Base(db.Model):
+    __abstract__ = True
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class User(Base):
     __tablename__ = 'users'
-    id = db.Column(db.String, primary_key=True)
-    email = db.Column(db.String, unique=True, nullable=True)
-    first_name = db.Column(db.String, nullable=True)
-    last_name = db.Column(db.String, nullable=True)
-    profile_image_url = db.Column(db.String, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    google_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    
+    labs: Mapped[List["Lab"]] = relationship("Lab", back_populates="user", cascade="all, delete-orphan")
+    user_courses: Mapped[List["UserCourse"]] = relationship("UserCourse", back_populates="user", cascade="all, delete-orphan")
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'email': self.email,
+            'name': self.name,
+            'google_id': self.google_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
 
-    enrollments = db.relationship('Enrollment', back_populates='user', cascade='all, delete-orphan')
-    user_labs = db.relationship('UserLab', back_populates='user', cascade='all, delete-orphan')
 
-class OAuth(OAuthConsumerMixin, db.Model):
-    user_id = db.Column(db.String, db.ForeignKey(User.id))
-    browser_session_key = db.Column(db.String, nullable=False)
-    user = db.relationship(User)
-
-    __table_args__ = (UniqueConstraint(
-        'user_id',
-        'browser_session_key',
-        'provider',
-        name='uq_user_browser_session_key_provider',
-    ),)
-
-# Course and Lab models
-class Course(db.Model):
+class Course(Base):
     __tablename__ = 'courses'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String, nullable=False)
-    description = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    
+    name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    description: Mapped[str] = mapped_column(String(500), nullable=True)
+    
+    user_courses: Mapped[List["UserCourse"]] = relationship("UserCourse", back_populates="course", cascade="all, delete-orphan")
+    labs: Mapped[List["Lab"]] = relationship("Lab", back_populates="course", cascade="all, delete-orphan")
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
 
-    labs = db.relationship('Lab', back_populates='course', cascade='all, delete-orphan')
-    enrollments = db.relationship('Enrollment', back_populates='course', cascade='all, delete-orphan')
 
-class Lab(db.Model):
+class UserCourse(Base):
+    __tablename__ = 'user_courses'
+    
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id'), nullable=False)
+    course_id: Mapped[int] = mapped_column(Integer, ForeignKey('courses.id'), nullable=False)
+    
+    user: Mapped["User"] = relationship("User", back_populates="user_courses")
+    course: Mapped["Course"] = relationship("Course", back_populates="user_courses")
+
+
+class Lab(Base):
     __tablename__ = 'labs'
-    id = db.Column(db.Integer, primary_key=True)
-    course_id = db.Column(db.Integer, db.ForeignKey('courses.id'), nullable=False)
-    name = db.Column(db.String, nullable=False)
-    template_folder = db.Column(db.String, nullable=False)
-    description = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.now)
+    
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id'), nullable=False)
+    course_id: Mapped[int] = mapped_column(Integer, ForeignKey('courses.id'), nullable=False)
+    lab_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    template_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    folder_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    folder_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[LabStatus] = mapped_column(SQLEnum(LabStatus), default=LabStatus.ENROLLED, nullable=False)
+    
+    user: Mapped["User"] = relationship("User", back_populates="labs")
+    course: Mapped["Course"] = relationship("Course", back_populates="labs")
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'course_id': self.course_id,
+            'lab_name': self.lab_name,
+            'template_name': self.template_name,
+            'folder_name': self.folder_name,
+            'folder_path': self.folder_path,
+            'status': self.status.value,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
 
-    course = db.relationship('Course', back_populates='labs')
-    user_labs = db.relationship('UserLab', back_populates='lab', cascade='all, delete-orphan')
 
-class Enrollment(db.Model):
-    __tablename__ = 'enrollments'
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
-    course_id = db.Column(db.Integer, db.ForeignKey('courses.id'), nullable=False)
-    enrolled_at = db.Column(db.DateTime, default=datetime.now)
-
-    user = db.relationship('User', back_populates='enrollments')
-    course = db.relationship('Course', back_populates='enrollments')
-
-    __table_args__ = (UniqueConstraint('user_id', 'course_id', name='uq_user_course'),)
-
-class UserLab(db.Model):
-    __tablename__ = 'user_labs'
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
-    lab_id = db.Column(db.Integer, db.ForeignKey('labs.id'), nullable=False)
-    folder_name = db.Column(db.String, nullable=False)
-    status = db.Column(db.String, default='ENROLLED')
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    last_accessed = db.Column(db.DateTime)
-
-    user = db.relationship('User', back_populates='user_labs')
-    lab = db.relationship('Lab', back_populates='user_labs')
-
-    __table_args__ = (UniqueConstraint('user_id', 'lab_id', name='uq_user_lab'),)
+class LabTemplate(Base):
+    __tablename__ = 'lab_templates'
+    
+    name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    folder_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(String(500), nullable=True)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'folder_name': self.folder_name,
+            'description': self.description
+        }

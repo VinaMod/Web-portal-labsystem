@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authentication Successful - Labtainer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="main-content">
+        <div class="login-container">
+            <div class="login-card">
+                <div class="login-header">
+                    <h2>✅ Authentication Successful</h2>
+                    <p>Redirecting to dashboard...</p>
+                </div>
+                <div class="login-body">
+                    <div style="text-align: center;">
+                        <div class="loading">Setting up your session...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const token = "{{ token }}";
+        const user = {{ user | tojson }};
+        
+        if (token) {
+            localStorage.setItem('jwt_token', token);
+            
+            setTimeout(() => {
+                window.location.href = '/dashboard';
+            }, 1000);
+        } else {
+            window.location.href = '/login?error=Authentication failed';
+        }
+    </script>
+</body>
+</html>

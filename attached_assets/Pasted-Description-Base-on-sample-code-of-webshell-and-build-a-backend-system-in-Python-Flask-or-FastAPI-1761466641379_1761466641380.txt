@@ -1,0 +1,56 @@
+Description:
+Base on sample code of webshell and build a backend system in Python (Flask or FastAPI) that integrates with a Labtainer server for cybersecurity lab exercises.  
+The system uses a webshell (Python + JS frontend) connected to a Labtainer server, which store lab folder in path /labs and runs Linux-based commands for secure lab environments.
+
+The Labtainer server supports the following commands:
+- rebuild <name-of-folder-lab>
+- labtainer start <name-of-folder-lab>
+- labtainer stop <name-of-folder-lab>
+
+When user click api Start Lab, BE and FE when create a connection use Websocket for keep connection realtime between FE and BE, and user can realtime command in FE, then FE send request to BE and BE send linux command into Labtainer server for doing lab. 
+
+The backend should provide 4 main REST APIs:
+
+1. **Social Login with .edu email**
+   - Allow users to log in using social login (e.g., Google OAuth) but only accept `.edu` domain emails.
+   - Store the user information (email, name, unique ID) in the database if not already registered.
+   - Return a JWT or session token for authenticated access.
+
+2. **Dashboard API**
+   - Display each student’s enrolled courses and their lab progress.
+   - Each record should include:
+     - List of enrolled courses
+     - List of labs registered under each course
+     - Status of each lab (e.g., ENROLLED, STARTED, COMPLETED)
+   - Return structured JSON for frontend dashboard rendering.
+
+3. **Course and Lab Registration API**
+   - Allow users to register for a course.
+   - The Labtainer server contains 3 pre-existing lab template folders.
+   - When a user registers:
+     - Randomly clone one of the 3 template lab folders.
+     - Name it using a unique format: `<userid>-<name-of-folder-lab>`.
+     - Save this new lab instance in the database with status **ENROLLED**.
+   - Update the user’s enrolled courses and labs list in the database.
+
+4. **Start Lab API**
+   - When user click button will create a websocket connection, then auto send command rebuild <name-of-folder-lab> command, and BE will detect user id then execute command rebuild <userid>-<name-of-folder-lab> into server
+
+System requirements:
+- Use Python (Flask or FastAPI) for the backend.
+- UseSQLAlchemy + SQLite or PostgreSQL as the database. 
+- Use JWT-based authentication after social login.
+- Include routes for `/auth/login`, `/dashboard`, `/register-lab`, and `/start-lab`.
+- Handle asynchronous subprocess calls for running Labtainer commands safely.
+- Include CORS support for frontend requests.
+- Include logging and error handling.
+
+Deliverables:
+- A `main.py` or `app.py` file with all 4 working API routes.
+- Database model definitions for Users, Courses, and Labs.
+- Example test data or seed function for demo.
+- Return all responses in JSON.
+
+The goal:
+To create a functional backend that allows students to log in with a .edu email, see their progress dashboard, register for labs, and start lab sessions directly through the webshell interface that communicates with the Labtainer server.
+

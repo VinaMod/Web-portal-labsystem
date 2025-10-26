@@ -1,184 +1,54 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Web Terminal - Labtainer</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
-    <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            background-color: #000;
-            font-family: monospace, sans-serif;
-            overflow: hidden;
-        }
-        
-        .header {
-            background: #2c2c2c;
-            color: white;
-            padding: 10px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 2px solid #667eea;
-        }
-        
-        .header h3 {
-            margin: 0;
-            font-size: 1.2em;
-        }
-        
-        .btn {
-            background: #667eea;
-            color: white;
-            border: none;
-            padding: 8px 15px;
-            border-radius: 5px;
-            cursor: pointer;
-            text-decoration: none;
-            font-size: 0.9em;
-        }
-        
-        .btn:hover {
-            background: #5568d3;
-        }
-        
-        .terminal-container {
-            height: calc(100% - 60px);
-            display: flex;
-            flex-direction: column;
-        }
-        
-        #terminal {
-            flex-grow: 1;
-            padding: 10px;
-        }
-        
-        .info-bar {
-            background: #2c2c2c;
-            color: #888;
-            padding: 5px 20px;
-            font-size: 0.9em;
-            border-top: 1px solid #444;
-        }
-    </style>
-</head>
-    
-<body>
-    <div class="header">
-        <div>
-            <h3>Labtainer Terminal
-            {% if user_lab %}
-            - {{ user_lab.lab.name }}
-            {% endif %}
-            </h3>
+{% extends "base.html" %}
+
+{% block title %}Lab Terminal - Labtainer{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+{% endblock %}
+
+{% block content %}
+<div class="terminal-container">
+    <div class="terminal-header">
+        <div class="terminal-info">
+            <h3 id="lab-title">Lab Terminal</h3>
+            <span class="lab-status" id="lab-status">Disconnected</span>
         </div>
-        <div>
-            {% if user_lab %}
-            <button class="btn" onclick="labCommand('start', {{ user_lab.lab_id }})">Start Lab</button>
-            <button class="btn" onclick="labCommand('stop', {{ user_lab.lab_id }})">Stop Lab</button>
-            <button class="btn" onclick="labCommand('rebuild', {{ user_lab.lab_id }})">Rebuild Lab</button>
-            {% endif %}
-            <a href="/dashboard" class="btn">Back to Dashboard</a>
+        <div class="terminal-controls">
+            <button id="start-lab-btn" class="btn btn-success" disabled>
+                ▶️ Start Lab
+            </button>
+            <button id="stop-lab-btn" class="btn btn-danger" disabled>
+                ⏹️ Stop Lab
+            </button>
+            <button id="rebuild-btn" class="btn btn-warning" disabled>
+                🔄 Rebuild
+            </button>
+            <button id="clear-btn" class="btn btn-secondary">
+                🗑️ Clear
+            </button>
         </div>
     </div>
-    
-    <div class="terminal-container">
-        <div id="terminal"></div>
-        {% if user_lab %}
-        <div class="info-bar">
-            Lab Folder: {{ user_lab.folder_name }} | Status: {{ user_lab.status }}
+
+    <div id="terminal" class="terminal-window"></div>
+
+    <div class="terminal-footer">
+        <div class="command-help">
+            <strong>Available Commands:</strong>
+            <code>labtainer start</code>,
+            <code>labtainer stop</code>,
+            <code>rebuild</code>
         </div>
-        {% endif %}
+        <div class="connection-status">
+            <span id="connection-indicator" class="indicator disconnected"></span>
+            <span id="connection-text">Disconnected</span>
+        </div>
     </div>
-    
-    <script>
-        const term = new Terminal({
-            cursorBlink: true,
-            fontSize: 14,
-            fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-            theme: {
-                background: '#000000',
-                foreground: '#ffffff'
-            }
-        });
-        
-        const fitAddon = new FitAddon.FitAddon();
-        term.loadAddon(fitAddon);
-        
-        term.open(document.getElementById('terminal'));
-        fitAddon.fit();
-        window.addEventListener('resize', () => fitAddon.fit());
-        
-        const socket = io();
-        
-        socket.on('pty_output', function(data) {
-            term.write(data.output);
-        });
-        
-        term.onData(function(data) {
-            socket.emit('pty_input', { 'input': data });
-        });
-        
-        socket.on('connect', () => {
-            console.log('Connected to backend');
-            const labId = {% if user_lab %}{{ user_lab.lab_id }}{% else %}null{% endif %};
-            socket.emit('init_terminal', { 'lab_id': labId });
-            fitAddon.fit();
-            sendTerminalSize();
-        });
-        
-        socket.on('error', (data) => {
-            term.write('\r\n\r\n[ERROR] ' + data.message + '\r\n');
-            console.error('Socket error:', data.message);
-        });
-        
-        socket.on('disconnect', () => {
-            console.log('Disconnected from backend');
-            term.write('\r\n\r\n[DISCONNECTED]\r\n');
-        });
-        
-        function sendTerminalSize() {
-            if (socket.connected) {
-                socket.emit('pty_resize', { 'cols': term.cols, 'rows': term.rows });
-            }
-        }
-        
-        term.onResize(() => {
-            sendTerminalSize();
-        });
-        
-        window.addEventListener('resize', () => {
-            fitAddon.fit();
-        });
-        
-        function labCommand(action, labId) {
-            fetch(`/lab/${labId}/${action}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    term.write(`\r\n\r\n[LAB ${action.toUpperCase()} SUCCESS]\r\n`);
-                    if (data.output) {
-                        term.write(data.output + '\r\n');
-                    }
-                } else {
-                    term.write(`\r\n\r\n[LAB ${action.toUpperCase()} FAILED]\r\n`);
-                    term.write(data.message + '\r\n');
-                }
-            })
-            .catch(error => {
-                term.write(`\r\n\r\n[ERROR] Failed to ${action} lab\r\n`);
-                console.error('Error:', error);
-            });
-        }
-    </script>
-</body>
-</html>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<script src="{{ url_for('static', filename='js/terminal.js') }}"></script>
+{% endblock %}
