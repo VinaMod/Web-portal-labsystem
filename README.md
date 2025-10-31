@@ -1,338 +1,165 @@
-# Labtainer Backend System
+# WebSocket Terminal Server
 
-A Python Flask backend system that integrates with a Labtainer server for managing cybersecurity lab exercises. This system provides Google OAuth authentication (restricted to .edu emails), REST APIs for lab management, and WebSocket support for real-time terminal interaction.
+Một ứng dụng terminal web sử dụng Flask, Socket.IO và xterm.js cho phép bạn truy cập terminal từ trình duyệt web.
 
-## Features
+## 🚀 Tính năng
 
-- **Google OAuth Authentication**: Login with .edu email addresses only
-- **JWT-based Authorization**: Secure API access with JSON Web Tokens
-- **PostgreSQL Database**: Store users, courses, labs, and progress
-- **REST APIs**: Complete CRUD operations for lab management
-- **WebSocket Support**: Real-time terminal interaction with Labtainer server
-- **Lab Template Cloning**: Automatic lab environment setup with unique naming
-- **Status Tracking**: Monitor lab progress (ENROLLED, STARTED, COMPLETED)
+- **Terminal thời gian thực**: Sử dụng WebSocket để giao tiếp real-time
+- **Giao diện đẹp**: Sử dụng xterm.js cho trải nghiệm terminal giống native
+- **Hỗ trợ PowerShell**: Tối ưu cho Windows PowerShell
+- **Responsive**: Giao diện thích ứng với nhiều kích thước màn hình
+- **Phím tắt**: Hỗ trợ Ctrl+C, Ctrl+Z, Tab completion
+- **Nhiều session**: Mỗi client có session terminal riêng biệt
 
-## Prerequisites
+## 📋 Yêu cầu hệ thống
 
-- Python 3.11+
-- PostgreSQL database
-- Google OAuth credentials (.edu email domain)
-- Labtainer server with lab templates in `/labs` directory
+- Python 3.7 trở lên
+- Windows (cho phiên bản PowerShell)
+- Trình duyệt web hiện đại (Chrome, Firefox, Edge, Safari)
 
-## Environment Variables
+## ⚡ Cài đặt nhanh
 
-Required environment variables (see `.env.example`):
+### 1. Kích hoạt virtual environment
+```powershell
+# Nếu đã có .venv
+.\.venv\Scripts\Activate.ps1
 
-- `DATABASE_URL`: PostgreSQL connection string
-- `SESSION_SECRET`: Secret key for JWT and sessions
-- `GOOGLE_OAUTH_CLIENT_ID`: Google OAuth client ID
-- `GOOGLE_OAUTH_CLIENT_SECRET`: Google OAuth client secret
-- `LAB_BASE_PATH`: Path to Labtainer labs folder (default: `/labs`)
+# Nếu chưa có, tạo mới
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
 
-## Installation
-
-1. Install dependencies:
-```bash
+### 2. Cài đặt dependencies
+```powershell
 pip install -r requirements.txt
 ```
 
-2. Set up environment variables in `.env` file
+### 3. Chạy server
+```powershell
+# Phiên bản Windows (khuyến nghị cho Windows)
+python app_windows.py
 
-3. Initialize the database:
-```bash
-python seed_data.py
-```
-
-4. Create lab template folders:
-```bash
-mkdir -p /labs/network-analysis
-mkdir -p /labs/buffer-overflow
-mkdir -p /labs/sql-injection
-```
-
-## Running the Application
-
-```bash
+# Hoặc phiên bản Unix/Linux
 python app.py
 ```
 
-The server will start on `http://0.0.0.0:5000`
+### 4. Mở trình duyệt
+Truy cập: http://localhost:5000
 
-## API Endpoints
+## 📁 Cấu trúc project
 
-### Authentication
-
-#### `GET /auth/login`
-Initiate Google OAuth login flow
-
-**Response:**
-```json
-{
-  "authorization_url": "https://accounts.google.com/..."
-}
+```
+websocket_terminal/
+├── app.py                 # Server chính (Unix/Linux)
+├── app_windows.py         # Server cho Windows
+├── requirements.txt       # Dependencies
+├── templates/
+│   └── index.html        # Giao diện web
+├── .venv/                # Virtual environment
+└── README.md             # Tài liệu này
 ```
 
-#### `GET /auth/login/callback`
-OAuth callback endpoint (handled automatically by Google)
+## 🛠️ Cấu hình
 
-**Response:**
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "user": {
-    "id": 1,
-    "email": "student@university.edu",
-    "name": "John Doe",
-    "google_id": "123456789"
-  }
-}
+### Thay đổi port
+Sửa trong file `app_windows.py`:
+```python
+socketio.run(app, host='0.0.0.0', port=5000, debug=True)
 ```
 
-### Dashboard
-
-#### `GET /dashboard`
-Get user's enrolled courses and labs with status
-
-**Headers:**
-```
-Authorization: Bearer <JWT_TOKEN>
+### Bảo mật
+Đổi secret key trong file `app_windows.py`:
+```python
+app.config['SECRET_KEY'] = 'your-new-secret-key'
 ```
 
-**Response:**
-```json
-{
-  "user": {
-    "id": 1,
-    "email": "student@university.edu",
-    "name": "John Doe"
-  },
-  "courses": [
-    {
-      "id": 1,
-      "name": "Introduction to Cybersecurity",
-      "description": "Learn the fundamentals...",
-      "labs": [
-        {
-          "id": 1,
-          "lab_name": "1-Network Analysis Lab",
-          "status": "ENROLLED",
-          "template_name": "Network Analysis Lab"
-        }
-      ]
-    }
-  ]
-}
+### CORS
+Để cho phép truy cập từ domain khác:
+```python
+socketio = SocketIO(app, cors_allowed_origins=["http://yourdomain.com"])
 ```
 
-### Lab Management
+## 🎯 Sử dụng
 
-#### `POST /register-lab`
-Register for a course and get a random lab assigned
+1. **Kết nối**: Mở trình duyệt và truy cập server
+2. **Gõ lệnh**: Nhập lệnh PowerShell bình thường
+3. **Phím tắt**: 
+   - `Ctrl+C`: Ngắt lệnh đang chạy
+   - `Ctrl+Z`: Tạm dừng process
+   - `Tab`: Auto-completion
+4. **Copy/Paste**: Chuột phải để copy/paste
+5. **Fullscreen**: Nhấn nút maximize màu xanh
 
-**Headers:**
-```
-Authorization: Bearer <JWT_TOKEN>
-```
+## 🔧 Troubleshooting
 
-**Request Body:**
-```json
-{
-  "course_id": 1
-}
-```
+### Lỗi không kết nối được
+- Kiểm tra firewall Windows
+- Đảm bảo port 5000 không bị chiếm dụng
+- Chạy PowerShell với quyền Administrator
 
-**Response:**
-```json
-{
-  "message": "Lab registered successfully",
-  "lab": {
-    "id": 1,
-    "lab_name": "1-Network Analysis Lab",
-    "template_name": "Network Analysis Lab",
-    "folder_path": "/labs/1-network-analysis",
-    "status": "ENROLLED"
-  }
-}
+### Terminal không hiển thị output
+- Restart server
+- Refresh trang web
+- Kiểm tra console browser (F12)
+
+### Lỗi import module
+```powershell
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
-#### `GET /labs`
-Get all labs for the authenticated user
+## 🚨 Bảo mật quan trọng
 
-**Headers:**
-```
-Authorization: Bearer <JWT_TOKEN>
-```
+⚠️ **CẢNH BÁO**: Ứng dụng này cho phép thực thi lệnh trên server. Chỉ sử dụng trong môi trường tin cậy!
 
-#### `GET /courses`
-Get all available courses
+### Khuyến nghị bảo mật:
+- Không expose ra internet công cộng
+- Sử dụng firewall để giới hạn truy cập
+- Chạy với user có quyền hạn chế
+- Thêm authentication nếu cần thiết
 
-## WebSocket Events
+## 🔄 Phát triển thêm
 
-### Client → Server Events
+### Thêm authentication
+```python
+from flask_login import login_required
 
-#### `connect`
-Connect to WebSocket server
-
-#### `authenticate`
-Authenticate WebSocket connection
-
-**Payload:**
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
+@app.route('/')
+@login_required
+def index():
+    return render_template('index.html')
 ```
 
-#### `start_lab`
-Start a lab session (runs rebuild command)
-
-**Payload:**
-```json
-{
-  "lab_id": 1
-}
+### Logging
+```python
+import logging
+logging.basicConfig(level=logging.INFO)
 ```
 
-#### `execute_command`
-Execute a Labtainer command
-
-**Payload:**
-```json
-{
-  "lab_id": 1,
-  "command": "labtainer start"
-}
+### SSL/HTTPS
+```python
+socketio.run(app, host='0.0.0.0', port=5000, 
+            keyfile='key.pem', certfile='cert.pem')
 ```
 
-**Allowed commands:**
-- `labtainer start <lab_name>`
-- `labtainer stop <lab_name>`
-- `rebuild <lab_name>`
+## 📝 Dependencies
 
-### Server → Client Events
+- **Flask**: Web framework
+- **Flask-SocketIO**: WebSocket support
+- **python-socketio**: Socket.IO implementation
+- **eventlet**: Async networking library
 
-#### `connection_response`
-Connection established confirmation
+## 🐛 Báo lỗi
 
-#### `authenticated`
-Authentication successful
+Nếu gặp lỗi, vui lòng:
+1. Kiểm tra console browser (F12)
+2. Kiểm tra log server terminal
+3. Đảm bảo tất cả dependencies đã cài đặt
 
-#### `output`
-Command output/terminal output
+## 📄 License
 
-**Payload:**
-```json
-{
-  "message": "Command output text..."
-}
-```
+MIT License - Sử dụng tự do cho mục đích học tập và phát triển.
 
-#### `lab_status`
-Lab status changed
+---
 
-**Payload:**
-```json
-{
-  "lab_id": 1,
-  "status": "STARTED"
-}
-```
-
-#### `error`
-Error message
-
-**Payload:**
-```json
-{
-  "message": "Error description"
-}
-```
-
-## Database Schema
-
-### Users
-- `id`: Primary key
-- `email`: Email address (.edu domain)
-- `name`: Full name
-- `google_id`: Google OAuth unique ID
-
-### Courses
-- `id`: Primary key
-- `name`: Course name
-- `description`: Course description
-
-### Labs
-- `id`: Primary key
-- `user_id`: Foreign key to Users
-- `course_id`: Foreign key to Courses
-- `lab_name`: Unique lab name (format: `<user_id>-<template_name>`)
-- `template_name`: Original template name
-- `folder_path`: Path to lab folder on Labtainer server
-- `status`: ENROLLED, STARTED, or COMPLETED
-
-### LabTemplates
-- `id`: Primary key
-- `name`: Template display name
-- `folder_name`: Folder name on server
-- `description`: Template description
-
-## Labtainer Commands
-
-The system executes these commands on the Labtainer server:
-
-- `rebuild <userid>-<lab_folder_name>`: Rebuild lab environment
-- `labtainer start <userid>-<lab_folder_name>`: Start lab session
-- `labtainer stop <userid>-<lab_folder_name>`: Stop lab session
-
-## Security Features
-
-- **.edu email validation**: Only university emails allowed
-- **JWT authentication**: Secure token-based API access
-- **Command whitelist**: Only Labtainer commands allowed
-- **User isolation**: Each user gets unique lab folders
-- **CORS protection**: Configurable CORS policy
-
-## Development
-
-### Running in Debug Mode
-
-```bash
-python app.py
-```
-
-### Resetting Database
-
-```bash
-python seed_data.py
-```
-
-This will drop all tables and recreate them with seed data.
-
-## Google OAuth Setup
-
-1. Go to https://console.cloud.google.com/apis/credentials
-2. Create a new OAuth 2.0 Client ID
-3. Add authorized redirect URI:
-   - `https://<your-domain>/auth/login/callback`
-4. Copy Client ID and Client Secret to environment variables
-
-## Troubleshooting
-
-### "Google OAuth not configured" error
-- Ensure `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` are set
-
-### "Only .edu email addresses are allowed"
-- The system only accepts email addresses ending in `.edu`
-
-### Lab command execution fails
-- Verify Labtainer server is accessible
-- Check `LAB_BASE_PATH` is correct
-- Ensure lab template folders exist in `/labs`
-
-### WebSocket connection issues
-- Verify CORS settings allow your frontend origin
-- Check that JWT token is valid and not expired
-
-## License
-
-MIT License
+**Lưu ý**: Đây là tool dành cho development và testing. Không khuyến nghị sử dụng trong production environment mà không có các biện pháp bảo mật phù hợp.

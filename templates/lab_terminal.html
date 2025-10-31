@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ lab_session.lab.name }} - Lab Terminal</title>
+    <link rel="stylesheet" href="https://unpkg.com/xterm@5.3.0/css/xterm.css" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      rel="stylesheet"
+    />
+
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background: #0d1117;
+        font-family: "Cascadia Code", "Consolas", "Monaco", monospace;
+        color: #c9d1d9;
+        overflow: hidden;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .lab-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 15px 20px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .lab-info h1 {
+        margin: 0;
+        font-size: 1.3rem;
+        font-weight: 600;
+      }
+
+      .lab-info p {
+        margin: 5px 0 0 0;
+        opacity: 0.9;
+        font-size: 0.9rem;
+      }
+
+      .lab-controls {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .status-badge {
+        padding: 6px 12px;
+        border-radius: 15px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      .status-badge.in-progress {
+        background: #ffc107;
+        color: #333;
+      }
+
+      .btn-control {
+        background: rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: white;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        transition: all 0.3s ease;
+      }
+
+      .btn-control:hover {
+        background: rgba(255, 255, 255, 0.3);
+        color: white;
+        transform: translateY(-1px);
+      }
+
+      .terminal-container {
+        flex: 1;
+        background: #0d1117;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .terminal-wrapper {
+        flex: 1;
+        padding: 20px;
+        background: #0d1117;
+        overflow: auto;
+        min-height: 0;
+      }
+
+      #terminal {
+        height: 100%;
+        min-height: 100%;
+        background: #0d1117;
+      }
+
+      .security-notice {
+        background: rgba(255, 193, 7, 0.1);
+        border: 1px solid #ffc107;
+        color: #ffc107;
+        padding: 10px 20px;
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      /* Terminal scrollbar */
+      .xterm .xterm-viewport::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .xterm .xterm-viewport::-webkit-scrollbar-track {
+        background: #161b22;
+      }
+
+      .xterm .xterm-viewport::-webkit-scrollbar-thumb {
+        background: #667eea;
+        border-radius: 4px;
+      }
+
+      .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+        background: #7c8df0;
+      }
+
+      /* Loading overlay */
+      .loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(13, 17, 23, 0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        transition: opacity 0.3s ease;
+      }
+
+      .loading-content {
+        text-align: center;
+        color: #c9d1d9;
+      }
+
+      .loading-content i {
+        font-size: 3rem;
+        color: #667eea;
+        margin-bottom: 20px;
+        animation: spin 2s linear infinite;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .connection-status {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        padding: 8px 12px;
+        border-radius: 15px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        z-index: 100;
+        transition: all 0.3s ease;
+      }
+
+      .connection-status.connected {
+        background: rgba(40, 167, 69, 0.2);
+        color: #28a745;
+        border: 1px solid #28a745;
+      }
+
+      .connection-status.connecting {
+        background: rgba(255, 193, 7, 0.2);
+        color: #ffc107;
+        border: 1px solid #ffc107;
+        animation: pulse 2s infinite;
+      }
+
+      .connection-status.disconnected {
+        background: rgba(220, 53, 69, 0.2);
+        color: #dc3545;
+        border: 1px solid #dc3545;
+      }
+
+      @keyframes pulse {
+        0% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+        100% {
+          opacity: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Lab Header -->
+    <div class="lab-header">
+      <div class="lab-info">
+        <h1>
+          <i class="fas fa-flask me-2"></i>
+          {{ lab_session.lab.name }}
+        </h1>
+        <p>{{ lab_session.lab.description }}</p>
+      </div>
+
+      <div class="lab-controls">
+        <span class="status-badge {{ lab_session.status }}"
+          >{{ lab_session.status.replace('_', ' ').title() }}</span
+        >
+        <button class="btn btn-control" onclick="showHelp()">
+          <i class="fas fa-question-circle me-1"></i>Help
+        </button>
+        <button class="btn btn-control" onclick="submitLab()">
+          <i class="fas fa-paper-plane me-1"></i>Submit
+        </button>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-control">
+          <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+        </a>
+      </div>
+    </div>
+
+    <!-- Security Notice -->
+    <div class="security-notice">
+      <i class="fas fa-shield-alt"></i>
+      <span
+        >Security Mode: Commands are validated and restricted to lab resources
+        only.</span
+      >
+    </div>
+
+    <!-- Terminal Container -->
+    <div class="terminal-container">
+      <div class="connection-status connecting" id="connectionStatus">
+        <i class="fas fa-wifi me-1"></i>Connecting...
+      </div>
+
+      <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-content">
+          <i class="fas fa-cog"></i>
+          <h4>Initializing Lab Environment</h4>
+          <p>Setting up secure terminal session...</p>
+        </div>
+      </div>
+
+      <div class="terminal-wrapper">
+        <div id="terminal"></div>
+      </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://unpkg.com/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+              // Initialize components
+              const socket = io();
+              const labSessionId = {{ lab_session.id }};
+
+              // Terminal configuration
+              const terminal = new Terminal({
+                  cursorBlink: true,
+                  cursorStyle: "block",
+                  theme: {
+                      background: "#0d1117",
+                      foreground: "#c9d1d9",
+                      cursor: "#667eea",
+                      cursorAccent: "#0d1117",
+                      selection: "rgba(102, 126, 234, 0.3)",
+                      black: "#484f58",
+                      red: "#ff7b72",
+                      green: "#7ce38b",
+                      yellow: "#ffc777",
+                      blue: "#67b7ff",
+                      magenta: "#dcbdfb",
+                      cyan: "#7ee2f7",
+                      white: "#e6edf3",
+                      brightBlack: "#6e7681",
+                      brightRed: "#ffa198",
+                      brightGreen: "#56d364",
+                      brightYellow: "#e3b341",
+                      brightBlue: "#79c0ff",
+                      brightMagenta: "#d2a8ff",
+                      brightCyan: "#a5f3fc",
+                      brightWhite: "#f0f6fc"
+                  },
+                  fontSize: 14,
+                  lineHeight: 1.2,
+                  letterSpacing: 0.5,
+                  fontFamily: '"Cascadia Code", "Consolas", "SF Mono", "Monaco", monospace',
+                  fontWeight: 'normal',
+                  fontWeightBold: 'bold',
+                  scrollback: 5000,
+                  bellStyle: "none",
+                  allowTransparency: false,
+                  convertEol: true,
+                  fastScrollModifier: "alt",
+                  rightClickSelectsWord: true,
+                  wordSeparator: " ()[]{}',\"`",
+                  tabStopWidth: 4
+              });
+
+              // Add FitAddon for auto-sizing
+              const fitAddon = new FitAddon.FitAddon();
+              terminal.loadAddon(fitAddon);
+
+              // DOM elements
+              const loadingOverlay = document.getElementById('loadingOverlay');
+              const connectionStatus = document.getElementById('connectionStatus');
+
+              // Attach terminal to DOM
+              terminal.open(document.getElementById('terminal'));
+
+              // Auto-fit terminal using FitAddon
+              function fitTerminal() {
+                  try {
+                      fitAddon.fit();
+                  } catch (e) {
+                      console.warn('Could not fit terminal:', e);
+                  }
+              }
+
+              // Initialize terminal size
+              setTimeout(() => {
+                  fitTerminal();
+                  terminal.focus();
+              }, 100);
+
+              // Handle window resize
+              window.addEventListener('resize', () => {
+                  setTimeout(fitTerminal, 100);
+              });
+
+              // Terminal input handling
+              terminal.onData((data) => {
+                  socket.emit('terminal_input', { data: data });
+              });
+
+              // Keyboard shortcuts
+              terminal.attachCustomKeyEventHandler((event) => {
+                  // Ctrl+Shift+C for copy
+                  if (event.ctrlKey && event.shiftKey && event.code === 'KeyC') {
+                      document.execCommand('copy');
+                      return false;
+                  }
+
+                  // Ctrl+Shift+V for paste
+                  if (event.ctrlKey && event.shiftKey && event.code === 'KeyV') {
+                      navigator.clipboard.readText().then(text => {
+                          socket.emit('terminal_input', { data: text });
+                      });
+                      return false;
+                  }
+
+                  // Ctrl+L for clear
+                  if (event.ctrlKey && event.code === 'KeyL') {
+                      socket.emit('terminal_input', { data: 'clear\r' });
+                      return false;
+                  }
+
+                  return true;
+              });
+
+              // Socket event handlers
+              socket.on('connect', () => {
+                  updateConnectionStatus('connecting', 'Connecting...');
+                  socket.emit('start_terminal', { lab_session_id: labSessionId });
+              });
+
+              socket.on('disconnect', () => {
+                  updateConnectionStatus('disconnected', 'Disconnected');
+              });
+
+              socket.on('terminal_ready', () => {
+                  updateConnectionStatus('connected', 'Connected');
+                  hideLoading();
+                  terminal.focus();
+              });
+
+              socket.on('terminal_output', (data) => {
+                  terminal.write(data.data);
+              });
+
+              socket.on('terminal_clear', () => {
+                  terminal.clear();
+                  terminal.reset();
+              });
+
+              socket.on('terminal_error', (data) => {
+                  terminal.write(`\r\n\x1b[31m❌ Error: ${data.error}\x1b[0m\r\n`);
+                  updateConnectionStatus('disconnected', 'Error');
+              });
+
+              // Helper functions
+              function updateConnectionStatus(status, text) {
+                  connectionStatus.className = `connection-status ${status}`;
+                  connectionStatus.innerHTML = `<i class="fas fa-wifi me-1"></i>${text}`;
+              }
+
+              function hideLoading() {
+                  loadingOverlay.style.opacity = '0';
+                  setTimeout(() => {
+                      loadingOverlay.style.display = 'none';
+                  }, 300);
+              }
+
+              function showHelp() {
+                  const helpText = `
+      🧪 Lab Terminal Help
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+      📋 Available Commands:
+        ls, cat, grep, find, pwd, whoami, cd
+        python3, gcc, make (if applicable)
+
+      🔒 Security Features:
+        • Commands are validated for safety
+        • Access restricted to lab resources only
+        • All commands are logged
+
+      ⌨️  Keyboard Shortcuts:
+        • Ctrl+Shift+C: Copy selected text
+        • Ctrl+Shift+V: Paste text
+        • Ctrl+L: Clear terminal
+
+      💡 Tips:
+        • Use 'ls' to explore available files
+        • Check README.md for lab instructions
+        • Use 'cd' to navigate directories
+
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      `;
+                  terminal.write(helpText);
+              }
+
+              function submitLab() {
+                  if (confirm('Are you ready to submit this lab? This action cannot be undone.')) {
+                      // TODO: Implement lab submission
+                      alert('Lab submission will be implemented next!');
+                  }
+              }
+
+              // Prevent accidental page close
+              window.addEventListener('beforeunload', (e) => {
+                  if (socket.connected) {
+                      e.preventDefault();
+                      e.returnValue = 'You have an active lab session. Are you sure you want to leave?';
+                  }
+              });
+
+              // Focus terminal when clicking anywhere
+              document.addEventListener('click', (e) => {
+                  if (!e.target.closest('.lab-header') && !e.target.closest('button')) {
+                      terminal.focus();
+                  }
+              });
+
+              console.log('🧪 Secure Lab Terminal initialized');
+              console.log(`📁 Lab Session ID: ${labSessionId}`);
+    </script>
+  </body>
+</html>
