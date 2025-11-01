@@ -189,6 +189,8 @@ def validate_command_access(command, accessible_resources, current_dir):
     Returns (is_allowed, reason)
     """
     import shlex
+    if not accessible_resources:
+        return True, "No limit"
     
     # Split command into parts, handling quotes properly
     try:
