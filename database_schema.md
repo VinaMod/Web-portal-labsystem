@@ -145,20 +145,13 @@ CREATE INDEX idx_command_logs_terminal_session ON command_logs(terminal_session_
 ### Sample Courses
 ```sql
 INSERT INTO courses (code, name, description, semester) VALUES 
-('SEC301', 'Web Application Security', 'Learn about common web vulnerabilities and how to exploit/prevent them', 'Fall2025'),
-('CS101', 'Introduction to Computer Science', 'Basic programming and computer science concepts', 'Fall2025'),
-('NET401', 'Network Security', 'Advanced network security concepts and penetration testing', 'Fall2025');
+('IAW301', 'Web Security', 'Learn about common web vulnerabilities and how to exploit/prevent them', 'Fall2025');
 ```
 
 ### Sample Labs
 ```sql
 INSERT INTO labs (course_id, name, description, template_folder, accessible_resources, build_command, deadline) VALUES 
-(1, 'SQL Injection Lab', 'Learn to identify and exploit SQL injection vulnerabilities', 'sql-injection-template', 
- '["./", "./src", "./database", "./logs"]', 'docker-compose up -d && sleep 5', '2025-12-15 23:59:59'),
-(1, 'XSS Prevention Lab', 'Understanding Cross-Site Scripting attacks and defenses', 'xss-template',
- '["./", "./webapp", "./scripts"]', 'npm install && npm start', '2025-12-20 23:59:59'),
-(2, 'Basic Programming Lab', 'First programming assignment', 'basic-programming-template',
- '["./", "./src", "./tests"]', 'gcc -o main main.c', '2025-11-30 23:59:59');
+(1, 'SQL Injection Lab Combine RCE', 'Learn to identify and exploit SQL injection vulnerabilities', 'sql-injection-template';
 ```
 
 ## Security Considerations

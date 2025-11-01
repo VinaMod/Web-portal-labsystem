@@ -971,9 +971,6 @@ def create_sample_templates():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        
-        # Create sample data for testing
-        create_sample_data()
     
     print("🚀 Starting Lab Management System...")
     print("📡 Server will be available at: http://localhost:5000")
