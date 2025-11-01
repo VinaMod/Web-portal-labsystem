@@ -625,7 +625,8 @@ def handle_start_terminal(data):
         session_id=terminal_session_id,
         user_id=user_id,
         lab_session_id=lab_session_id,
-        current_directory=lab_session.student_folder or '/tmp'
+        #current_directory=lab_session.student_folder or '/tmp'
+        curent_directory="/home/student/labtainer/trunk/scripts/labtainer-student"
     )
     
     db.session.add(terminal_session)
