@@ -453,11 +453,11 @@ def clone_lab_folder(user_id, lab_id):
     
     try:
         template_path = os.path.join(LAB_TEMPLATES_PATH, lab.template_folder)
-        
+        print("========= template path ", template_path);
         # Create unique folder name for student
         student_folder_name = f"{user.email.split('@')[0]}-{lab.template_folder}"
         student_folder_path = os.path.join(STUDENT_LABS_PATH, student_folder_name)
-        
+        print("=========== student path ", student_folder_path)
         # Clone the template folder
         if os.path.exists(template_path) and not os.path.exists(student_folder_path):
             shutil.copytree(template_path, student_folder_path)
