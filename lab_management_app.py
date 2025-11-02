@@ -10,6 +10,7 @@ import json
 import shutil
 import uuid
 import re
+import ipaddress
 from pathlib import Path
 from functools import wraps
 
@@ -500,9 +501,11 @@ def enroll_course():
     return False
 def clone_lab_folder(user_id, lab_id):
     """Clone lab template folder for a specific user and update configs"""
+    print("============== ", lab_id, user_id)
     lab = Lab.query.get(lab_id)
     user = User.query.get(user_id)
     if not lab or not user:
+        print("================ OUT")
         return False
 
     try:
@@ -512,6 +515,7 @@ def clone_lab_folder(user_id, lab_id):
 
         # Clone template folder
         if os.path.exists(template_path) and not os.path.exists(student_folder_path):
+            print("====================== ", template_path)
             shutil.copytree(template_path, student_folder_path)
 
             # Update Dockerfile names
@@ -519,6 +523,7 @@ def clone_lab_folder(user_id, lab_id):
             for fname in os.listdir(dockerfiles_path):
                 if fname.startswith(f"Dockerfile.{lab.template_folder}"):
                     new_fname = fname.replace(lab.template_folder, student_folder_name)
+                    print("===============" , new_fname)
                     os.rename(
                         os.path.join(dockerfiles_path, fname),
                         os.path.join(dockerfiles_path, new_fname)
@@ -526,8 +531,10 @@ def clone_lab_folder(user_id, lab_id):
 
             # Update start.config
             config_path = os.path.join(student_folder_path, "config", "start.config")
+            print("====================== lab config ", config_path)
             if os.path.exists(config_path):
-                update_start_config(config_path, lab, student_folder_name)
+                print("============= START UPDATE CONFIG")
+                update_start_config(config_path, student_folder_name)
 
             # Create or update lab session
             lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
@@ -551,38 +558,127 @@ def clone_lab_folder(user_id, lab_id):
 
     return False
 
-def update_start_config(config_path, lab, student_folder_name):
-    """Update start.config placeholders based on lab network info"""
-    # Load available network from labs_net_work table
+def update_start_config(config_path, student_folder_name):
+    """
+    Update start.config placeholders based on an available network.
+    - Finds placeholders in file like ${lab_master_seed}, ${subnet_network_name},
+      ${subnet_network_mask}, ${subnet_network_gateway}, ${subnet_network_ip1}, ...
+    - Chọn LabsNetwork.used==False (first available), sinh IP cho các subnet_network_ipN
+      theo thứ tự host addresses (bỏ gateway nếu trùng), bắt đầu từ host đầu (.1), 
+      nhưng sẽ skip gateway và sử dụng host thứ 1 cho ip1 (commonly .2 if .1 is gateway).
+    - Ghi file và mark network.used = True.
+    """
+
+    # 1. Load an available network
+
     network = LabsNetwork.query.filter_by(used=False).first()
     if not network:
         raise ValueError("No available network for lab!")
 
-    with open(config_path, "r") as f:
+    # 2. Read file and find placeholders ${...}
+    with open(config_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # Replace placeholders
-    template = Template(content)
-    # Collect IPs for containers sequentially
-    container_ips = []
-    ip_base = network.subnet_ip_base  # e.g., '172.25.0.'
-    for i, container in enumerate(lab.containers, start=2):
-        container_ips.append(f"{ip_base}{i}")
+    # Find all placeholders like ${name}
+    print("================= config content", content)
+    placeholders = set(re.findall(r"\$\{([^}]+)\}", content))
 
-    rendered = template.render(
-        lab_master_seed=f"{student_folder_name}_master_seed",
-        subnet_network_name=network.name,
-        subnet_network_mask=network.mask,
-        subnet_network_gateway=network.gateway,
-        subnet_network_ips=container_ips
-    )
+    # Determine how many subnet_network_ipN placeholders are present and which indices
+    ip_placeholder_pattern = re.compile(r"^subnet_network_ip(\d+)$")
+    ip_indices = []
+    for ph in placeholders:
+        m = ip_placeholder_pattern.match(ph)
+        if m:
+            ip_indices.append(int(m.group(1)))
+    if ip_indices:
+        max_ip_index = max(ip_indices)
+    else:
+        max_ip_index = 0
 
-    with open(config_path, "w") as f:
-        f.write(rendered)
+    # 3. Prepare replacement mapping
+    replacements = {}
 
-    # Mark network as used
+    # lab_master_seed
+    if "lab_master_seed" in placeholders:
+        replacements["lab_master_seed"] = f"{student_folder_name}_master_seed"
+
+    # subnet_network_name, mask, gateway
+    if "subnet_network_name" in placeholders:
+        replacements["subnet_network_name"] = network.name
+    if "subnet_network_mask" in placeholders:
+        # use network.mask if available, else build from network.subnet_ip_base + '/24' as fallback
+        replacements["subnet_network_mask"] = getattr(network, "mask", "") or getattr(network, "subnet_ip_base", "") + "0/24"
+    if "subnet_network_gateway" in placeholders:
+        replacements["subnet_network_gateway"] = network.gateway
+
+    # 4. Generate IP addresses for ip placeholders
+    if max_ip_index > 0:
+        # Derive ip_network
+        # Prefer a stored mask attribute (e.g., '172.25.0.0/24'), otherwise try to build from subnet_ip_base
+        net_spec = None
+        if getattr(network, "mask", None):
+            net_spec = network.mask
+        elif getattr(network, "subnet_ip_base", None):
+            # e.g. '172.25.0.' -> build '172.25.0.0/24' as fallback
+            ip_base = network.subnet_ip_base.rstrip('.')
+            net_spec = f"{ip_base}.0/24"
+        else:
+            raise ValueError("Network record lacks mask and subnet_ip_base")
+
+        try:
+            ip_net = ipaddress.ip_network(net_spec, strict=False)
+        except Exception as e:
+            raise ValueError(f"Invalid network specification '{net_spec}': {e}")
+
+        # Build list of usable hosts, skipping network and broadcast automatically
+        hosts = list(ip_net.hosts())  # generator -> list of IPv4Address objects
+
+        # If gateway present, ensure we skip it when assigning
+        gateway_addr = None
+        if getattr(network, "gateway", None):
+            try:
+                gateway_addr = ipaddress.ip_address(network.gateway)
+            except Exception:
+                gateway_addr = None
+
+        # Create an iterator skipping gateway
+        assignable_hosts = [h for h in hosts if gateway_addr is None or h != gateway_addr]
+
+        # Sanity check: need at least max_ip_index hosts available
+        if len(assignable_hosts) < max_ip_index:
+            raise ValueError(
+                f"Not enough assignable hosts in network {net_spec} to satisfy {max_ip_index} IPs"
+            )
+
+        # Map ip placeholders: subnet_network_ip1 -> first assignable host, etc.
+        for idx in range(1, max_ip_index + 1):
+            addr = str(assignable_hosts[idx - 1])  # idx-1 because list is 0-based
+            replacements[f"subnet_network_ip{idx}"] = addr
+
+    # 5. Also provide convenience: if placeholders ask for subnet_network_ip_list or similar
+    if "subnet_network_ip_list" in placeholders:
+        # create comma-separated list of assigned ips
+        ip_list = []
+        for idx in range(1, max_ip_index + 1):
+            ip_list.append(replacements.get(f"subnet_network_ip{idx}", ""))
+        replacements["subnet_network_ip_list"] = ",".join(ip_list)
+
+    # 6. Replace all placeholders in the content: ${name} -> replacements[name]
+    def _replace_match(m):
+        key = m.group(1)
+        return str(replacements.get(key, m.group(0)))  # if not found, keep original
+
+    new_content = re.sub(r"\$\{([^}]+)\}", _replace_match, content)
+
+    # 7. Write back file
+    with open(config_path, "w", encoding="utf-8") as f:
+        f.write(new_content)
+
+    # 8. Mark network as used and commit
     network.used = True
     db.session.commit()
+
+    return True
 
 @app.route('/api/start_lab/<int:lab_id>', methods=['POST'])
 @login_required
