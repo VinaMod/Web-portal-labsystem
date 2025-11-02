@@ -168,6 +168,21 @@ class CommandLog(db.Model):
     is_allowed = db.Column(db.Boolean)
     blocked_reason = db.Column(db.Text)
     executed_at = db.Column(db.DateTime, default=datetime.utcnow)
+class LabsNetwork(db.Model):
+    __tablename__ = 'labs_network'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False)           # Tên mạng
+    subnet_ip_base = db.Column(db.String(15), nullable=False) # Base IP cho container
+    mask = db.Column(db.String(18), nullable=False)           # Subnet mask
+    gateway = db.Column(db.String(15), nullable=False)        # Gateway
+    used = db.Column(db.Boolean, default=False)               # Đã dùng hay chưa
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow,
+                           onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<LabsNetwork {self.name} ({self.subnet_ip_base})>"    
 
 # Helper Functions
 def login_required(f):
@@ -445,7 +460,7 @@ def enroll_course():
         db.session.rollback()
         return jsonify({'error': 'Failed to enroll in course'}), 500
 
-def clone_lab_folder(user_id, lab_id):
+# def clone_lab_folder(user_id, lab_id):
     """Clone lab template folder for a specific user"""
     lab = Lab.query.get(lab_id)
     user = User.query.get(user_id)
@@ -483,6 +498,91 @@ def clone_lab_folder(user_id, lab_id):
         return False
     
     return False
+def clone_lab_folder(user_id, lab_id):
+    """Clone lab template folder for a specific user and update configs"""
+    lab = Lab.query.get(lab_id)
+    user = User.query.get(user_id)
+    if not lab or not user:
+        return False
+
+    try:
+        template_path = os.path.join(LAB_TEMPLATES_PATH, lab.template_folder)
+        student_folder_name = f"{user.email.split('@')[0]}-{lab.template_folder}"
+        student_folder_path = os.path.join(STUDENT_LABS_PATH, student_folder_name)
+
+        # Clone template folder
+        if os.path.exists(template_path) and not os.path.exists(student_folder_path):
+            shutil.copytree(template_path, student_folder_path)
+
+            # Update Dockerfile names
+            dockerfiles_path = os.path.join(student_folder_path, "dockerfiles")
+            for fname in os.listdir(dockerfiles_path):
+                if fname.startswith(f"Dockerfile.{lab.template_folder}"):
+                    new_fname = fname.replace(lab.template_folder, student_folder_name)
+                    os.rename(
+                        os.path.join(dockerfiles_path, fname),
+                        os.path.join(dockerfiles_path, new_fname)
+                    )
+
+            # Update start.config
+            config_path = os.path.join(student_folder_path, "config", "start.config")
+            if os.path.exists(config_path):
+                update_start_config(config_path, lab, student_folder_name)
+
+            # Create or update lab session
+            lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
+            if not lab_session:
+                lab_session = LabSession(
+                    user_id=user_id,
+                    lab_id=lab_id,
+                    student_folder=student_folder_path
+                )
+                db.session.add(lab_session)
+            else:
+                lab_session.student_folder = student_folder_path
+
+            db.session.commit()
+            return True
+
+    except Exception as e:
+        print(f"Error cloning lab folder: {e}")
+        db.session.rollback()
+        return False
+
+    return False
+
+def update_start_config(config_path, lab, student_folder_name):
+    """Update start.config placeholders based on lab network info"""
+    # Load available network from labs_net_work table
+    network = LabsNetwork.query.filter_by(used=False).first()
+    if not network:
+        raise ValueError("No available network for lab!")
+
+    with open(config_path, "r") as f:
+        content = f.read()
+
+    # Replace placeholders
+    template = Template(content)
+    # Collect IPs for containers sequentially
+    container_ips = []
+    ip_base = network.subnet_ip_base  # e.g., '172.25.0.'
+    for i, container in enumerate(lab.containers, start=2):
+        container_ips.append(f"{ip_base}{i}")
+
+    rendered = template.render(
+        lab_master_seed=f"{student_folder_name}_master_seed",
+        subnet_network_name=network.name,
+        subnet_network_mask=network.mask,
+        subnet_network_gateway=network.gateway,
+        subnet_network_ips=container_ips
+    )
+
+    with open(config_path, "w") as f:
+        f.write(rendered)
+
+    # Mark network as used
+    network.used = True
+    db.session.commit()
 
 @app.route('/api/start_lab/<int:lab_id>', methods=['POST'])
 @login_required

@@ -123,6 +123,20 @@ CREATE TABLE command_logs (
 );
 ```
 
+### 8. labs_network
+```sql
+CREATE TABLE labs_network (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,          -- Tên mạng, ví dụ: some_network
+    subnet_ip_base VARCHAR(15) NOT NULL, -- Base IP cho container, ví dụ: '172.25.0.'
+    mask VARCHAR(18) NOT NULL,           -- Subnet mask, ví dụ: '172.25.0.0/24'
+    gateway VARCHAR(15) NOT NULL,        -- Gateway, ví dụ: '172.25.0.101'
+    used BOOLEAN DEFAULT FALSE,          -- Dùng hay chưa
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+```
 ## Indexes for Performance
 ```sql
 -- User lookups
@@ -151,7 +165,7 @@ INSERT INTO courses (code, name, description, semester) VALUES
 ### Sample Labs
 ```sql
 INSERT INTO labs (course_id, name, description, template_folder, accessible_resources, build_command, deadline) VALUES 
-(1, 'SQL Injection Lab Combine RCE', 'Learn to identify and exploit SQL injection vulnerabilities', 'sql-injection-template';
+(1, 'SQL Injection Lab Combine RCE', 'Learn to identify and exploit SQL injection vulnerabilities', 'sql-to-rce');
 ```
 
 ## Security Considerations
