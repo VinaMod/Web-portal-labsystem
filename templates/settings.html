@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Settings - Lab Management System</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        background: #f8f9fa;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      }
+
+      .navbar {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+
+      .navbar-brand {
+        font-weight: 600;
+        color: white !important;
+      }
+
+      .navbar-nav .nav-link {
+        color: rgba(255, 255, 255, 0.9) !important;
+        transition: all 0.3s ease;
+      }
+
+      .navbar-nav .nav-link:hover {
+        color: white !important;
+        transform: translateY(-1px);
+      }
+
+      .user-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+      }
+
+      .page-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 40px 0;
+        margin-bottom: 40px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .page-title {
+        color: white;
+        font-size: 32px;
+        font-weight: 700;
+        margin: 0;
+      }
+
+      .page-subtitle {
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 16px;
+        margin-top: 10px;
+      }
+
+      .settings-card {
+        border: none;
+        border-radius: 15px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        margin-bottom: 30px;
+      }
+
+      .settings-section-title {
+        font-size: 20px;
+        font-weight: 700;
+        color: #2d3748;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+      }
+
+      .settings-section-title i {
+        margin-right: 10px;
+        color: #667eea;
+        width: 24px;
+        text-align: center;
+      }
+
+      .form-label {
+        font-weight: 600;
+        color: #4a5568;
+        margin-bottom: 8px;
+      }
+
+      .form-control:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        padding: 12px 30px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+      }
+
+      .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+      }
+
+      .btn-outline-secondary {
+        border: 2px solid #e2e8f0;
+        color: #4a5568;
+        font-weight: 600;
+        padding: 12px 30px;
+        transition: all 0.3s ease;
+      }
+
+      .btn-outline-secondary:hover {
+        background: #f7fafc;
+        border-color: #cbd5e0;
+        color: #2d3748;
+      }
+
+      .alert {
+        border: none;
+        border-radius: 12px;
+        padding: 15px 20px;
+      }
+
+      .info-box {
+        background: #f7fafc;
+        border-left: 4px solid #667eea;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+      }
+
+      .info-box i {
+        color: #667eea;
+        margin-right: 10px;
+      }
+
+      .profile-avatar-large {
+        width: 150px;
+        height: 150px;
+        border-radius: 50%;
+        border: 5px solid #e2e8f0;
+        object-fit: cover;
+        margin-bottom: 20px;
+      }
+
+      .nav-tabs {
+        border-bottom: 2px solid #e2e8f0;
+        margin-bottom: 30px;
+      }
+
+      .nav-tabs .nav-link {
+        border: none;
+        color: #718096;
+        font-weight: 600;
+        padding: 12px 24px;
+        transition: all 0.3s ease;
+      }
+
+      .nav-tabs .nav-link:hover {
+        color: #667eea;
+        border-color: transparent;
+      }
+
+      .nav-tabs .nav-link.active {
+        color: #667eea;
+        background: transparent;
+        border-bottom: 3px solid #667eea;
+      }
+
+      .danger-zone {
+        border: 2px solid #feb2b2;
+        border-radius: 12px;
+        padding: 20px;
+        background: #fff5f5;
+      }
+
+      .danger-zone h5 {
+        color: #c53030;
+        font-weight: 700;
+        margin-bottom: 10px;
+      }
+
+      .btn-danger {
+        background: #c53030;
+        border: none;
+        font-weight: 600;
+        padding: 10px 24px;
+      }
+
+      .btn-danger:hover {
+        background: #9b2c2c;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+      <div class="container">
+        <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+          <i class="fas fa-flask me-2"></i>Lab Management System
+        </a>
+        <button
+          class="navbar-toggler"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#navbarNav"
+        >
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav me-auto">
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('dashboard') }}">
+                <i class="fas fa-home me-1"></i>Dashboard
+              </a>
+            </li>
+            {% if session.user.role == 'admin' %}
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('admin_dashboard') }}">
+                <i class="fas fa-cog me-1"></i>Admin Panel
+              </a>
+            </li>
+            {% endif %}
+          </ul>
+          <ul class="navbar-nav">
+            <li class="nav-item dropdown">
+              <a
+                class="nav-link dropdown-toggle d-flex align-items-center"
+                href="#"
+                id="navbarDropdown"
+                role="button"
+                data-bs-toggle="dropdown"
+              >
+                {% if session.user.avatar_url %}
+                <img
+                  src="{{ session.user.avatar_url }}"
+                  alt="Avatar"
+                  class="user-avatar me-2"
+                />
+                {% else %}
+                <i class="fas fa-user-circle me-2"></i>
+                {% endif %} {{ session.user.full_name }}
+              </a>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li>
+                  <a class="dropdown-item" href="{{ url_for('profile') }}"
+                    ><i class="fas fa-user me-2"></i>Profile</a
+                  >
+                </li>
+                <li>
+                  <a
+                    class="dropdown-item active"
+                    href="{{ url_for('settings') }}"
+                    ><i class="fas fa-cog me-2"></i>Settings</a
+                  >
+                </li>
+                <li><hr class="dropdown-divider" /></li>
+                <li>
+                  <a class="dropdown-item" href="{{ url_for('logout') }}"
+                    ><i class="fas fa-sign-out-alt me-2"></i>Logout</a
+                  >
+                </li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="page-header">
+      <div class="container">
+        <h1 class="page-title"><i class="fas fa-cog me-3"></i>Settings</h1>
+        <p class="page-subtitle">
+          Manage your account settings and preferences
+        </p>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container">
+      <div class="row">
+        <!-- Sidebar -->
+        <div class="col-md-3 mb-4">
+          <div class="settings-card">
+            <div class="card-body">
+              <div class="text-center mb-3">
+                {% if user.avatar_url %}
+                <img
+                  src="{{ user.avatar_url }}"
+                  alt="{{ user.full_name }}"
+                  class="profile-avatar-large"
+                />
+                {% else %}
+                <div
+                  class="profile-avatar-large d-flex align-items-center justify-content-center mx-auto"
+                  style="
+                    background: linear-gradient(
+                      135deg,
+                      #667eea 0%,
+                      #764ba2 100%
+                    );
+                  "
+                >
+                  <i class="fas fa-user fa-4x text-white"></i>
+                </div>
+                {% endif %}
+                <h6 class="mb-1">{{ user.full_name }}</h6>
+                <p class="text-muted small mb-0">{{ user.role.title() }}</p>
+              </div>
+              <hr />
+              <ul class="nav flex-column">
+                <li class="nav-item">
+                  <a
+                    class="nav-link active"
+                    href="#account"
+                    data-bs-toggle="tab"
+                  >
+                    <i class="fas fa-user me-2"></i>Account
+                  </a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link" href="#preferences" data-bs-toggle="tab">
+                    <i class="fas fa-sliders-h me-2"></i>Preferences
+                  </a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link" href="#security" data-bs-toggle="tab">
+                    <i class="fas fa-shield-alt me-2"></i>Security
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main Settings Area -->
+        <div class="col-md-9">
+          <div class="tab-content">
+            <!-- Account Settings -->
+            <div class="tab-pane fade show active" id="account">
+              <div class="settings-card">
+                <div class="card-body">
+                  <h5 class="settings-section-title">
+                    <i class="fas fa-user-edit"></i>Account Information
+                  </h5>
+
+                  <div class="info-box">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Note:</strong> Changes to your account information
+                    will be saved immediately.
+                  </div>
+
+                  <div id="alert-container"></div>
+
+                  <form id="accountForm">
+                    <div class="mb-4">
+                      <label for="full_name" class="form-label">
+                        Full Name
+                      </label>
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="full_name"
+                        value="{{ user.full_name }}"
+                        required
+                      />
+                    </div>
+
+                    <div class="mb-4">
+                      <label for="email" class="form-label">
+                        Email Address
+                      </label>
+                      <input
+                        type="email"
+                        class="form-control"
+                        id="email"
+                        value="{{ user.email }}"
+                        required
+                      />
+                      <small class="text-muted">
+                        We'll never share your email with anyone else.
+                      </small>
+                    </div>
+
+                    <div class="mb-4">
+                      <label class="form-label">Google Account</label>
+                      <div class="input-group">
+                        <input
+                          type="text"
+                          class="form-control"
+                          value="{{ user.google_id }}"
+                          disabled
+                          readonly
+                        />
+                        <span class="input-group-text">
+                          <i class="fab fa-google text-danger"></i>
+                        </span>
+                      </div>
+                      <small class="text-muted">
+                        Your account is linked to Google Sign-In
+                      </small>
+                    </div>
+
+                    <div class="mb-4">
+                      <label class="form-label">Role</label>
+                      <input
+                        type="text"
+                        class="form-control text-capitalize"
+                        value="{{ user.role }}"
+                        disabled
+                        readonly
+                      />
+                      <small class="text-muted">
+                        Contact an administrator to change your role
+                      </small>
+                    </div>
+
+                    <div class="mb-4">
+                      <label class="form-label">Member Since</label>
+                      <input
+                        type="text"
+                        class="form-control"
+                        value="{{ user.created_at.strftime('%B %d, %Y') if user.created_at else 'N/A' }}"
+                        disabled
+                        readonly
+                      />
+                    </div>
+
+                    <div class="d-flex gap-3">
+                      <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-2"></i>Save Changes
+                      </button>
+                      <a
+                        href="{{ url_for('profile') }}"
+                        class="btn btn-outline-secondary"
+                      >
+                        <i class="fas fa-times me-2"></i>Cancel
+                      </a>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+
+            <!-- Preferences -->
+            <div class="tab-pane fade" id="preferences">
+              <div class="settings-card">
+                <div class="card-body">
+                  <h5 class="settings-section-title">
+                    <i class="fas fa-sliders-h"></i>Preferences
+                  </h5>
+
+                  <div class="info-box">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Coming Soon:</strong> Notification and display
+                    preferences will be available in a future update.
+                  </div>
+
+                  <div class="mb-4">
+                    <label class="form-label">Language</label>
+                    <select class="form-select" disabled>
+                      <option>English (US)</option>
+                      <option>Vietnamese</option>
+                    </select>
+                    <small class="text-muted">
+                      Multi-language support coming soon
+                    </small>
+                  </div>
+
+                  <div class="mb-4">
+                    <label class="form-label">Timezone</label>
+                    <select class="form-select" disabled>
+                      <option>UTC +7 (Vietnam)</option>
+                    </select>
+                  </div>
+
+                  <div class="mb-4">
+                    <h6>Email Notifications</h6>
+                    <div class="form-check mb-2">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="notif_lab_assigned"
+                        disabled
+                      />
+                      <label class="form-check-label" for="notif_lab_assigned">
+                        Lab assignments
+                      </label>
+                    </div>
+                    <div class="form-check mb-2">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="notif_deadline"
+                        disabled
+                      />
+                      <label class="form-check-label" for="notif_deadline">
+                        Deadline reminders
+                      </label>
+                    </div>
+                    <div class="form-check mb-2">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="notif_graded"
+                        disabled
+                      />
+                      <label class="form-check-label" for="notif_graded">
+                        Lab graded
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Security -->
+            <div class="tab-pane fade" id="security">
+              <div class="settings-card">
+                <div class="card-body">
+                  <h5 class="settings-section-title">
+                    <i class="fas fa-shield-alt"></i>Security
+                  </h5>
+
+                  <div class="info-box">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>OAuth Security:</strong> Your account is secured
+                    through Google OAuth. Password management is handled by
+                    Google.
+                  </div>
+
+                  <div class="mb-4">
+                    <h6>Account Status</h6>
+                    <p>
+                      {% if user.is_active %}
+                      <span class="badge bg-success">
+                        <i class="fas fa-check-circle me-1"></i>Active
+                      </span>
+                      {% else %}
+                      <span class="badge bg-danger">
+                        <i class="fas fa-times-circle me-1"></i>Inactive
+                      </span>
+                      {% endif %}
+                    </p>
+                  </div>
+
+                  <div class="mb-4">
+                    <h6>Last Login</h6>
+                    <p class="text-muted">
+                      {{ user.last_login.strftime('%B %d, %Y at %I:%M %p') if
+                      user.last_login else 'Never' }}
+                    </p>
+                  </div>
+
+                  <div class="mb-4">
+                    <h6>Connected Accounts</h6>
+                    <div class="d-flex align-items-center p-3 border rounded">
+                      <i class="fab fa-google fa-2x text-danger me-3"></i>
+                      <div>
+                        <strong>Google</strong>
+                        <br />
+                        <small class="text-muted">
+                          Connected via {{ user.email }}
+                        </small>
+                      </div>
+                      <span class="badge bg-success ms-auto">Connected</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Danger Zone -->
+              <div class="settings-card">
+                <div class="card-body">
+                  <div class="danger-zone">
+                    <h5>
+                      <i class="fas fa-exclamation-triangle me-2"></i>Danger
+                      Zone
+                    </h5>
+                    <p class="text-muted">
+                      Once you delete your account, there is no going back.
+                      Please be certain.
+                    </p>
+                    <button class="btn btn-danger" disabled>
+                      <i class="fas fa-trash me-2"></i>Delete Account
+                    </button>
+                    <small class="d-block mt-2 text-muted">
+                      Contact an administrator to delete your account
+                    </small>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      // Handle account form submission
+      document
+        .getElementById("accountForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const alertContainer = document.getElementById("alert-container");
+          const fullName = document.getElementById("full_name").value.trim();
+          const email = document.getElementById("email").value.trim();
+
+          if (!fullName || !email) {
+            alertContainer.innerHTML = `
+            <div class="alert alert-warning alert-dismissible fade show">
+              <i class="fas fa-exclamation-triangle me-2"></i>
+              Please fill in all required fields.
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+          `;
+            return;
+          }
+
+          try {
+            const response = await fetch("/settings/update", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                full_name: fullName,
+                email: email,
+              }),
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+              alertContainer.innerHTML = `
+              <div class="alert alert-success alert-dismissible fade show">
+                <i class="fas fa-check-circle me-2"></i>
+                ${data.message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            `;
+
+              // Update navbar display
+              setTimeout(() => {
+                window.location.reload();
+              }, 1500);
+            } else {
+              alertContainer.innerHTML = `
+              <div class="alert alert-danger alert-dismissible fade show">
+                <i class="fas fa-times-circle me-2"></i>
+                ${data.error || "Failed to update settings"}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            `;
+            }
+          } catch (error) {
+            alertContainer.innerHTML = `
+            <div class="alert alert-danger alert-dismissible fade show">
+              <i class="fas fa-times-circle me-2"></i>
+              An error occurred. Please try again.
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+          `;
+          }
+        });
+    </script>
+  </body>
+</html>

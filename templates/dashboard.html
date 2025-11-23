@@ -331,6 +331,65 @@
     </style>
   </head>
   <body>
+    <!-- Loading Screen -->
+    <div
+      id="loadingScreen"
+      style="
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        z-index: 9999;
+        align-items: center;
+        justify-content: center;
+      "
+    >
+      <div style="text-align: center; color: white">
+        <div
+          class="spinner-border"
+          role="status"
+          style="
+            width: 4rem;
+            height: 4rem;
+            border-width: 0.3rem;
+            border-color: #667eea;
+            border-right-color: transparent;
+          "
+        >
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <h3 style="margin-top: 20px; font-weight: 600">
+          Starting Lab Environment
+        </h3>
+        <p style="margin-top: 10px; color: rgba(255, 255, 255, 0.7)">
+          Please wait while we prepare your lab...
+        </p>
+        <div style="margin-top: 20px">
+          <div
+            class="progress"
+            style="
+              width: 300px;
+              height: 8px;
+              margin: 0 auto;
+              background: rgba(255, 255, 255, 0.2);
+            "
+          >
+            <div
+              class="progress-bar progress-bar-striped progress-bar-animated"
+              role="progressbar"
+              style="
+                width: 100%;
+                background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+              "
+            ></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg">
       <div class="container">
@@ -360,6 +419,13 @@
                 <i class="fas fa-plus me-1"></i>Enroll Course
               </a>
             </li>
+            {% if session.user.role == 'admin' %}
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('admin_dashboard') }}">
+                <i class="fas fa-cog me-1"></i>Admin Panel
+              </a>
+            </li>
+            {% endif %}
           </ul>
 
           <ul class="navbar-nav">
@@ -383,12 +449,12 @@
               </a>
               <ul class="dropdown-menu dropdown-menu-end">
                 <li>
-                  <a class="dropdown-item" href="#"
+                  <a class="dropdown-item" href="{{ url_for('profile') }}"
                     ><i class="fas fa-user me-2"></i>Profile</a
                   >
                 </li>
                 <li>
-                  <a class="dropdown-item" href="#"
+                  <a class="dropdown-item" href="{{ url_for('settings') }}"
                     ><i class="fas fa-cog me-2"></i>Settings</a
                   >
                 </li>
@@ -581,15 +647,26 @@
           {% endif %}
         </div>
         {% endfor %} {% else %}
-        <div class="empty-state">
+        <div
+          style="display: flex; flex-direction: column; align-items: center"
+          class="empty-state"
+        >
           <i class="fas fa-graduation-cap"></i>
           <h4>No courses enrolled yet</h4>
           <p>
             You haven't enrolled in any courses. Click "Enroll Course" to get
             started!
           </p>
-          <button class="btn btn-start mt-3" onclick="showEnrollModal()">
-            <i class="fas fa-plus me-2"></i>Enroll in a Course
+          <button
+            style="display: flex; align-items: center; width: fit-content"
+            class="btn btn-start mt-3"
+            onclick="showEnrollModal()"
+          >
+            <i
+              style="font-size: 2rem; margin-bottom: 0px"
+              class="fas fa-plus me-2"
+            ></i>
+            <span>Enroll in a Course</span>
           </button>
         </div>
         {% endif %}
@@ -651,6 +728,10 @@
     <script>
       // Lab management functions
       function startLab(labId) {
+        // Show loading screen
+        const loadingScreen = document.getElementById("loadingScreen");
+        loadingScreen.style.display = "flex";
+
         fetch(`/api/start_lab/${labId}`, {
           method: "POST",
           headers: {
@@ -660,19 +741,25 @@
           .then((response) => response.json())
           .then((data) => {
             if (data.error) {
+              loadingScreen.style.display = "none";
               alert("Error: " + data.error);
             } else {
-              // Redirect to lab terminal
+              // Keep loading screen visible and redirect
               window.location.href = `/lab/${labId}/terminal`;
             }
           })
           .catch((error) => {
+            loadingScreen.style.display = "none";
             console.error("Error starting lab:", error);
             alert("Failed to start lab. Please try again.");
           });
       }
 
       function continueLab(labId) {
+        // Show loading screen
+        const loadingScreen = document.getElementById("loadingScreen");
+        loadingScreen.style.display = "flex";
+
         // Same as start lab - redirect to terminal
         window.location.href = `/lab/${labId}/terminal`;
       }
