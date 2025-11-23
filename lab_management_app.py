@@ -75,6 +75,9 @@ ALLOWED_EXTENSIONS = {'pdf'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max file size
 
+STUDENT_NAME_LAB_PARAMETER = "${studentName}"
+LAB_NETWORK_MASK_PARAMETER = "${labNetworkMask}"
+
 # Ensure directories exist
 os.makedirs(LAB_TEMPLATES_PATH, exist_ok=True)
 os.makedirs(STUDENT_LABS_PATH, exist_ok=True)
@@ -271,6 +274,21 @@ class CommandLog(db.Model):
     is_allowed = db.Column(db.Boolean)
     blocked_reason = db.Column(db.Text)
     executed_at = db.Column(db.DateTime, default=datetime.utcnow)
+class LabsNetwork(db.Model):
+    __tablename__ = 'labs_network'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False)           # Tên mạng
+    subnet_ip_base = db.Column(db.String(15), nullable=False) # Base IP cho container
+    mask = db.Column(db.String(18), nullable=False)           # Subnet mask
+    gateway = db.Column(db.String(15), nullable=False)        # Gateway
+    used = db.Column(db.Boolean, default=False)               # Đã dùng hay chưa
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow,
+                           onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<LabsNetwork {self.name} ({self.subnet_ip_base})>"    
 
 # Helper Functions
 def login_required(f):
@@ -1525,7 +1543,7 @@ def create_linux_user(username, home_dir=None):
             return False, error_msg
         
         # Set appropriate permissions for home directory
-        subprocess.run(['sudo', 'chmod', '755', home_dir], check=True)
+        subprocess.run(['sudo', 'chmod', '775', home_dir], check=True)
         subprocess.run(['sudo', 'chown', f'{username}:{username}', home_dir], check=True)
         
         print(f"✅ Created Linux user: {username} with home: {home_dir}")
@@ -1641,7 +1659,7 @@ def clone_lab_folder(user_id, lab_id):
                     
                     # Set appropriate permissions (read/write/execute for owner, read for group)
                     subprocess.run([
-                        'sudo', 'chmod', '-R', '755', 
+                        'sudo', 'chmod', '-R', '775', 
                         student_folder_path
                     ], check=True, capture_output=True)
                     
@@ -1732,7 +1750,7 @@ def start_lab(lab_id):
         print("PREPARE FOR LABS ", lab.name)
         # Apply parameter file modifications if specified
         if lab.lab_parameters and lab_session.student_folder:
-            apply_parameter_file_modifications(lab, lab_session.student_folder)
+            apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name)
         
         # # Execute build command if specified
         # if lab.build_command and lab_session.student_folder:
@@ -1762,7 +1780,7 @@ def start_lab(lab_id):
         traceback.print_exc()
         return jsonify({'error': 'Failed to start lab'}), 500
 
-def apply_parameter_file_modifications(lab, student_folder):
+def apply_parameter_file_modifications(lab, student_folder, user_linux_name):
     """
     Modify files with parameter values when file_path is specified
     
@@ -1778,7 +1796,14 @@ def apply_parameter_file_modifications(lab, student_folder):
     # First pass: determine random values for all parameters
     for param in lab.lab_parameters:
         if param.values_list:
-            parameter_replacements[param.parameter_name] = random.choice(param.values_list)
+            value = random.choice(param.values_list)
+            value = value.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
+            if LAB_NETWORK_MASK_PARAMETER in value:
+                network = LabsNetwork.query.filter_by(used=False).first()
+                if not network:
+                    raise ValueError("No available network for lab!")
+                value = value.replace(LAB_NETWORK_MASK_PARAMETER, network.mask)
+            parameter_replacements[param.parameter_name] = value
     
     # Second pass: modify files if file_path is specified
     for param in lab.lab_parameters:
@@ -1787,7 +1812,7 @@ def apply_parameter_file_modifications(lab, student_folder):
         
         # Construct full file path
         file_full_path = os.path.join(student_folder, param.file_path)
-        
+        print 
         if not os.path.exists(file_full_path):
             print(f"⚠️ File not found for parameter modification: {file_full_path}")
             continue
@@ -1838,7 +1863,12 @@ def replace_lab_parameters(lab, command, user):
         
         # Chọn random 1 giá trị từ list
         random_value = random.choice(values_list)
-        
+        random_value = random_value.replace(STUDENT_NAME_LAB_PARAMETER, get_student_username(user.email))
+        if LAB_NETWORK_MASK_PARAMETER in random_value:
+            network = LabsNetwork.query.filter_by(used=False).first()
+            if not network:
+                raise ValueError("No available network for lab!")
+            random_value = random_value.replace(LAB_NETWORK_MASK_PARAMETER, network.mask)
         # Replace tất cả occurrences của parameter name = parameter value
         replaced_command = replaced_command.replace(parameter_name, str(random_value))
         

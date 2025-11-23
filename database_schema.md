@@ -122,6 +122,20 @@ CREATE TABLE command_logs (
     FOREIGN KEY (terminal_session_id) REFERENCES terminal_sessions(id)
 );
 ```
+### 8. lab_networks
+```sql
+CREATE TABLE labs_network (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    subnet_ip_base VARCHAR(15) NOT NULL,
+    mask VARCHAR(18) NOT NULL,
+    gateway VARCHAR(15) NOT NULL,
+    used TINYINT(1) DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+```
 
 ## Indexes for Performance
 ```sql
@@ -159,6 +173,12 @@ INSERT INTO labs (course_id, name, description, template_folder, accessible_reso
  '["./", "./webapp", "./scripts"]', 'npm install && npm start', '2025-12-20 23:59:59'),
 (2, 'Basic Programming Lab', 'First programming assignment', 'basic-programming-template',
  '["./", "./src", "./tests"]', 'gcc -o main main.c', '2025-11-30 23:59:59');
+```
+
+### Lab networks
+``` sql
+INSERT INTO "main"."labs_network" ("id", "name", "subnet_ip_base", "mask", "gateway", "used", "created_at", "updated_at") VALUES (1, 'some_network_1', '172.25.0.', '172.25.0.0/24', '172.25.0.101', 1, NULL, NULL);
+INSERT INTO "main"."labs_network" ("id", "name", "subnet_ip_base", "mask", "gateway", "used", "created_at", "updated_at") VALUES (2, 'some_network_2', '172.26.0.', '172.26.0.0/24', '172.26.0.101', 0, NULL, NULL);
 ```
 
 ## Security Considerations

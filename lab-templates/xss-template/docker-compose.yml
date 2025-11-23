@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: xss_02_web
+    container_name: ${xssWebContainer}
     hostname: web-server
     ports:
       - "8081:80"
@@ -22,14 +22,14 @@ services:
       - XSS_VULN_FIELD=${ENV:-comment}
       - USER_EMAIL=${USER_EMAIL:-admin@xsslab.local}
     networks:
-      - xss_02_network
+      - ${xssNetwork}
     restart: unless-stopped
 
   db:
     build:
       context: .
       dockerfile: Dockerfile.db
-    container_name: xss_02_db
+    container_name: ${xssDbContainer}
     hostname: db
     ports:
       - "3307:3306"
@@ -40,7 +40,7 @@ services:
       "--default-authentication-plugin=mysql_native_password"
     ]
     networks:
-      - xss_02_network
+      - ${xssNetwork}
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot123"]
       interval: 10s
@@ -49,10 +49,10 @@ services:
     restart: unless-stopped
 
 networks:
-  xss_02_network:
+  ${xssNetwork}:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.26.0.0/24
+        - subnet: ${xssSubnetMask}
 
 
