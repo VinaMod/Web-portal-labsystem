@@ -77,6 +77,8 @@ app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max file size
 
 STUDENT_NAME_LAB_PARAMETER = "${studentName}"
 LAB_NETWORK_MASK_PARAMETER = "${labNetworkMask}"
+LAB_NETWORK_GATEWAY_PARAMETER = "${labNetworkGateway}"
+LAB_SUB_NETWORK_IP_PREFIX = "${labSubnetIpPrefix}"
 
 # Ensure directories exist
 os.makedirs(LAB_TEMPLATES_PATH, exist_ok=True)
@@ -1797,12 +1799,30 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name):
             value = random.choice(param.values_list)
             value = value.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
 
+            network = None
             if LAB_NETWORK_MASK_PARAMETER in value:
                 network = LabsNetwork.query.filter_by(used=False).first()
                 if not network:
                     raise ValueError("No available network for lab!")
                 value = value.replace(LAB_NETWORK_MASK_PARAMETER, network.mask)
-
+            if LAB_NETWORK_GATEWAY_PARAMETER in value:     
+                if network is None:
+                    network = LabsNetwork.query.filter_by(used=False).first()
+                    if not network:
+                        raise ValueError("No available network for lab!")
+                value = value.replace(LAB_NETWORK_GATEWAY_PARAMETER, network.gateway) 
+            if LAB_SUB_NETWORK_IP_PREFIX in value:     
+                if network is None:
+                    network = LabsNetwork.query.filter_by(used=False).first()
+                    if not network:
+                        raise ValueError("No available network for lab!")
+                pattern = rf"{re.escape(LAB_SUB_NETWORK_IP_PREFIX)}_(\d+)"
+                import re
+                # Replace từng match
+                def replacer(match):
+                    index = int(match.group(1))
+                    return f"{network.subnet_ip_base}{index}"
+                value = re.sub(pattern, replacer, value)                    
             parameter_replacements[param.parameter_name] = value
 
     # Second pass: modify files and rename if needed
@@ -1879,11 +1899,30 @@ def replace_lab_parameters(lab, command, user):
         # Chọn random 1 giá trị từ list
         random_value = random.choice(values_list)
         random_value = random_value.replace(STUDENT_NAME_LAB_PARAMETER, get_student_username(user.email))
+        network = None
         if LAB_NETWORK_MASK_PARAMETER in random_value:
             network = LabsNetwork.query.filter_by(used=False).first()
             if not network:
                 raise ValueError("No available network for lab!")
             random_value = random_value.replace(LAB_NETWORK_MASK_PARAMETER, network.mask)
+        if LAB_NETWORK_GATEWAY_PARAMETER in random_value:     
+            if network is None:
+                network = LabsNetwork.query.filter_by(used=False).first()
+                if not network:
+                    raise ValueError("No available network for lab!")
+            random_value = random_value.replace(LAB_NETWORK_GATEWAY_PARAMETER, network.gateway)   
+        if LAB_SUB_NETWORK_IP_PREFIX in random_value:     
+            if network is None:
+                network = LabsNetwork.query.filter_by(used=False).first()
+                if not network:
+                    raise ValueError("No available network for lab!")
+            pattern = rf"{re.escape(LAB_SUB_NETWORK_IP_PREFIX)}_(\d+)"
+            import re
+            # Replace từng match
+            def replacer(match):
+                index = int(match.group(1))
+                return f"{network.subnet_ip_base}{index}"
+            random_value = re.sub(pattern, replacer, random_value)      
         # Replace tất cả occurrences của parameter name = parameter value
         replaced_command = replaced_command.replace(parameter_name, str(random_value))
         
