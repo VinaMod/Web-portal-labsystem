@@ -1793,7 +1793,14 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name):
     # Store parameter replacements to use consistently
     parameter_replacements = {}
     current_user = getpass.getuser()
-    subprocess.run(["setfacl", "-m", f"u:{current_user}:rwx", os.path.join(student_folder)], check=True)
+    full_command = f'sudo setfacl -m u:{current_user}:rwx {os.path.join(student_folder)}'
+    subprocess.run(
+            full_command,
+            shell=True,
+            capture_output=False,
+            text=True,
+            timeout=500
+        )
     # First pass: determine random values for all parameters
     for param in lab.lab_parameters:
         if param.values_list:
@@ -1848,9 +1855,14 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name):
             # --- Áp ACL: chỉ owner + manager có quyền ghi ---
             # chmod chuẩn: owner rwx, group r-x, others ---
             # set ACL cho manager
-            current_user = getpass.getuser()
+            full_command = f'sudo setfacl -m u:{current_user}:rwx {os.path.join(folder_of_file)}'
             subprocess.run(
-                ["setfacl", "-m", f"u:{current_user}:rwx", folder_of_file], check=True)
+                    full_command,
+                    shell=True,
+                    capture_output=False,
+                    text=True,
+                    timeout=500
+                )
             # Đổi tên file (nếu file cũ tồn tại)
             if os.path.exists(original_file_path):
                 os.rename(original_file_path, final_file_path)
