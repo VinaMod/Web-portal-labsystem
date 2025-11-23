@@ -1834,10 +1834,7 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name):
         original_file_path = os.path.join(student_folder, param.file_path)
         final_file_path = original_file_path
 
-        # 🔥 Nếu file_path chứa STUDENT_NAME_LAB_PARAMETER -> đổi tên file
-        import os
-        import subprocess
-
+        # 🔥 Nếu file_path chứa STUDENT_NAME_LAB_PARAMETER -> đổi tên fil
         if STUDENT_NAME_LAB_PARAMETER in param.file_path:
             new_relative_path = param.file_path.replace(
                 STUDENT_NAME_LAB_PARAMETER, user_linux_name
@@ -1852,9 +1849,11 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name):
             # chmod chuẩn: owner rwx, group r-x, others ---
             # set ACL cho manager
             current_user = getpass.getuser()
-            subprocess.run(["setfacl", "-m", "u:", current_user, ":rwx", folder_of_file], check=True)
-
-            # Đổi tên file (nếu file cũ tồn tại)
+            subprocess.run(
+                ["setfacl", "-m", f"u:{current_user}:rwx", os.path.join(student_folder)],
+                check=True
+            )
+                        # Đổi tên file (nếu file cũ tồn tại)
             if os.path.exists(original_file_path):
                 os.rename(original_file_path, final_file_path)
                 print(f"🔄 Renamed file: {param.file_path} → {new_relative_path}")
