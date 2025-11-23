@@ -1958,7 +1958,16 @@ def execute_run_command(user_linux_name, run_command, working_directory):
     """Execute run command when lab starts"""
     try:
         # Dùng newgrp -c "<command>" để chạy command với group mới
-        full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo docker compose down && sudo {run_command}"'
+        print("COMPOSE DOWN DOCKER CONTAINER ....")
+        full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo docker compose down"'
+        subprocess.run(
+            full_command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=500
+        )
+        full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo {run_command}"'
 
         result = subprocess.run(
             full_command,
