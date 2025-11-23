@@ -1797,7 +1797,7 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name):
     subprocess.run(
             full_command,
             shell=True,
-            capture_output=False,
+            capture_output=True,
             text=True,
             timeout=500
         )
@@ -1859,7 +1859,7 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name):
             subprocess.run(
                     full_command,
                     shell=True,
-                    capture_output=False,
+                    capture_output=True,
                     text=True,
                     timeout=500
                 )
