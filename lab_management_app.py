@@ -1783,59 +1783,74 @@ def start_lab(lab_id):
 def apply_parameter_file_modifications(lab, student_folder, user_linux_name):
     """
     Modify files with parameter values when file_path is specified
-    
-    Args:
-        lab: Lab object with parameters
-        student_folder: Path to student's lab folder
+    and rename file if file_path contains STUDENT_NAME_LAB_PARAMETER
     """
     import random
-    
+    import os
+
     # Store parameter replacements to use consistently
     parameter_replacements = {}
-    
+
     # First pass: determine random values for all parameters
     for param in lab.lab_parameters:
         if param.values_list:
             value = random.choice(param.values_list)
             value = value.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
+
             if LAB_NETWORK_MASK_PARAMETER in value:
                 network = LabsNetwork.query.filter_by(used=False).first()
                 if not network:
                     raise ValueError("No available network for lab!")
                 value = value.replace(LAB_NETWORK_MASK_PARAMETER, network.mask)
+
             parameter_replacements[param.parameter_name] = value
-    
-    # Second pass: modify files if file_path is specified
+
+    # Second pass: modify files and rename if needed
     for param in lab.lab_parameters:
         if not param.file_path:
             continue
-        
-        # Construct full file path
-        file_full_path = os.path.join(student_folder, param.file_path)
-        print 
-        if not os.path.exists(file_full_path):
-            print(f"⚠️ File not found for parameter modification: {file_full_path}")
+
+        original_file_path = os.path.join(student_folder, param.file_path)
+        final_file_path = original_file_path
+
+        # 🔥 Nếu file_path chứa STUDENT_NAME_LAB_PARAMETER -> đổi tên file
+        if STUDENT_NAME_LAB_PARAMETER in param.file_path:
+            new_relative_path = param.file_path.replace(
+                STUDENT_NAME_LAB_PARAMETER, user_linux_name
+            )
+            final_file_path = os.path.join(student_folder, new_relative_path)
+
+            # Đổi tên file (nếu file cũ tồn tại)
+            if os.path.exists(original_file_path):
+                os.rename(original_file_path, final_file_path)
+                print(f"🔄 Renamed file: {param.file_path} → {new_relative_path}")
+            else:
+                print(f"⚠️ Cannot rename, file not found: {original_file_path}")
+                continue
+
+        # đọc file sau khi rename (final_file_path)
+        if not os.path.exists(final_file_path):
+            print(f"⚠️ File not found for parameter modification: {final_file_path}")
             continue
-        
+
         try:
-            # Read file content
-            with open(file_full_path, 'r', encoding='utf-8') as f:
+            with open(final_file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-            
-            # Replace all parameters in the file
+
+            # Replace all parameters inside file content
             modified_content = content
             for param_name, param_value in parameter_replacements.items():
                 modified_content = modified_content.replace(param_name, str(param_value))
-            
-            # Write back modified content
-            with open(file_full_path, 'w', encoding='utf-8') as f:
+
+            with open(final_file_path, 'w', encoding='utf-8') as f:
                 f.write(modified_content)
-            
-            print(f"✅ Modified file: {param.file_path}")
+
+            print(f"✅ Modified file: {final_file_path}")
             print(f"   Replacements: {parameter_replacements}")
-            
+
         except Exception as e:
-            print(f"❌ Error modifying file {file_full_path}: {e}")
+            print(f"❌ Error modifying file {final_file_path}: {e}")
+
 
 def replace_lab_parameters(lab, command, user):
     """
