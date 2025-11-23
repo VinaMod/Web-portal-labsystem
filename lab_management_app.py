@@ -1793,7 +1793,7 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name):
     # Store parameter replacements to use consistently
     parameter_replacements = {}
     current_user = getpass.getuser()
-    subprocess.run(["setfacl", "-m", f"u:{current_user}:rwx", folder_of_file], check=True)
+    subprocess.run(["setfacl", "-m", f"u:{current_user}:rwx", os.path.join(student_folder)], check=True)
     # First pass: determine random values for all parameters
     for param in lab.lab_parameters:
         if param.values_list:
