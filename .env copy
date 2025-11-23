@@ -1,0 +1,26 @@
+# Environment Configuration for Lab Management System
+
+# Google OAuth Configuration
+GOOGLE_CLIENT_ID=840321756353-sje03vgnonn7gu2qik8h9q9p6h80i7b0.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=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
+
+# Security
+SECRET_KEY=your_very_secure_secret_key_here_change_in_production
+JWT_SECRET=your_jwt_secret_here
+
+# Database - MySQL (XAMPP)
+# Format: mysql+pymysql://username:password@host:port/database
+DATABASE_URL=mysql+pymysql://labtainer:123456@localhost:3306/lab_management
+
+# Lab Environment Paths
+LAB_TEMPLATES_PATH=./lab-templates
+STUDENT_LABS_PATH=./student-labs
+
+# Allowed Commands (JSON array)
+ALLOWED_COMMANDS=["ls", "cd", "dir", "cat", "type", "grep", "find", "pwd", "whoami", "python3", "gcc", "make", "vim", "nano", "git", "clear", "echo", "mkdir"]
+ALLOWED_EMAIL_REGEX=^.+@.+\.edu(\..+)?$
+
+# Server Configuration
+HOST=0.0.0.0
+PORT=5000
+DEBUG=True

@@ -123,20 +123,6 @@ CREATE TABLE command_logs (
 );
 ```
 
-### 8. labs_network
-```sql
-CREATE TABLE labs_network (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(50) NOT NULL,          -- Tên mạng, ví dụ: some_network
-    subnet_ip_base VARCHAR(15) NOT NULL, -- Base IP cho container, ví dụ: '172.25.0.'
-    mask VARCHAR(18) NOT NULL,           -- Subnet mask, ví dụ: '172.25.0.0/24'
-    gateway VARCHAR(15) NOT NULL,        -- Gateway, ví dụ: '172.25.0.101'
-    used BOOLEAN DEFAULT FALSE,          -- Dùng hay chưa
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-```
 ## Indexes for Performance
 ```sql
 -- User lookups
@@ -159,13 +145,20 @@ CREATE INDEX idx_command_logs_terminal_session ON command_logs(terminal_session_
 ### Sample Courses
 ```sql
 INSERT INTO courses (code, name, description, semester) VALUES 
-('IAW301', 'Web Security', 'Learn about common web vulnerabilities and how to exploit/prevent them', 'Fall2025');
+('SEC301', 'Web Application Security', 'Learn about common web vulnerabilities and how to exploit/prevent them', 'Fall2025'),
+('CS101', 'Introduction to Computer Science', 'Basic programming and computer science concepts', 'Fall2025'),
+('NET401', 'Network Security', 'Advanced network security concepts and penetration testing', 'Fall2025');
 ```
 
 ### Sample Labs
 ```sql
 INSERT INTO labs (course_id, name, description, template_folder, accessible_resources, build_command, deadline) VALUES 
-(1, 'SQL Injection Lab Combine RCE', 'Learn to identify and exploit SQL injection vulnerabilities', 'sql-to-rce');
+(1, 'SQL Injection Lab', 'Learn to identify and exploit SQL injection vulnerabilities', 'sql-injection-template', 
+ '["./", "./src", "./database", "./logs"]', 'docker-compose up -d && sleep 5', '2025-12-15 23:59:59'),
+(1, 'XSS Prevention Lab', 'Understanding Cross-Site Scripting attacks and defenses', 'xss-template',
+ '["./", "./webapp", "./scripts"]', 'npm install && npm start', '2025-12-20 23:59:59'),
+(2, 'Basic Programming Lab', 'First programming assignment', 'basic-programming-template',
+ '["./", "./src", "./tests"]', 'gcc -o main main.c', '2025-11-30 23:59:59');
 ```
 
 ## Security Considerations

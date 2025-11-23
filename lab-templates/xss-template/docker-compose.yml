@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: xss_02_web
+    hostname: web-server
+    ports:
+      - "8081:80"
+    volumes:
+      - ./config/php.ini:/usr/local/etc/php/php.ini
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - MYSQL_HOST=db
+      - MYSQL_DATABASE=xss_02_lab
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=root123
+      - XSS_VULN_FIELD=${ENV:-comment}
+      - USER_EMAIL=${USER_EMAIL:-admin@xsslab.local}
+    networks:
+      - xss_02_network
+    restart: unless-stopped
+
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.db
+    container_name: xss_02_db
+    hostname: db
+    ports:
+      - "3307:3306"
+    command: [
+      "--character-set-server=utf8mb4",
+      "--collation-server=utf8mb4_unicode_ci",
+      "--skip-character-set-client-handshake",
+      "--default-authentication-plugin=mysql_native_password"
+    ]
+    networks:
+      - xss_02_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  xss_02_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.26.0.0/24
+
+
