@@ -1,0 +1,2741 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Dashboard - Lab Management</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --primary-color: #667eea;
+        --secondary-color: #764ba2;
+        --success-color: #10b981;
+        --danger-color: #ef4444;
+        --warning-color: #f59e0b;
+        --dark-bg: #1f2937;
+        --card-bg: #ffffff;
+      }
+
+      body {
+        background: #f3f4f6;
+        min-height: 100vh;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      }
+
+      .navbar {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+
+      .navbar-brand {
+        font-weight: 700;
+        color: var(--primary-color);
+      }
+
+      .dashboard-container {
+        padding: 30px 0;
+      }
+
+      .stats-card {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        margin-bottom: 20px;
+      }
+
+      .stats-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+      }
+
+      .stats-card .icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        color: white;
+        margin-bottom: 15px;
+      }
+
+      .stats-card.users .icon {
+        background: #667eea;
+      }
+      .stats-card.courses .icon {
+        background: #f5576c;
+      }
+      .stats-card.labs .icon {
+        background: #00d4ff;
+      }
+      .stats-card.enrollments .icon {
+        background: #10b981;
+      }
+      .stats-card.active-courses .icon {
+        background: #f59e0b;
+      }
+
+      .stats-card h3 {
+        font-size: 32px;
+        font-weight: 700;
+        margin: 0;
+        color: var(--dark-bg);
+      }
+
+      .stats-card p {
+        margin: 0;
+        color: #6b7280;
+        font-size: 14px;
+      }
+
+      .management-card {
+        background: white;
+        border-radius: 15px;
+        padding: 30px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        margin-bottom: 30px;
+      }
+
+      .management-card h4 {
+        color: var(--dark-bg);
+        font-weight: 700;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .nav-tabs .nav-link {
+        color: #6b7280;
+        border: none;
+        padding: 12px 24px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+      }
+
+      .nav-tabs .nav-link:hover {
+        color: var(--primary-color);
+      }
+
+      .nav-tabs .nav-link.active {
+        color: var(--primary-color);
+        background: transparent;
+        border-bottom: 3px solid var(--primary-color);
+      }
+
+      .table-container {
+        overflow-x: auto;
+        margin-top: 20px;
+      }
+
+      .table {
+        background: white;
+      }
+
+      .table thead th {
+        background: #667eea;
+        color: white;
+        border: none;
+        font-weight: 600;
+        padding: 15px;
+      }
+
+      .table tbody tr {
+        transition: background 0.2s ease;
+      }
+
+      .table tbody tr:hover {
+        background: #f9fafb;
+      }
+
+      .btn-action {
+        padding: 6px 12px;
+        margin: 0 3px;
+        border-radius: 8px;
+        font-size: 14px;
+        transition: all 0.3s ease;
+      }
+
+      .btn-add {
+        background: var(--success-color);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 10px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+      }
+
+      .btn-add:hover {
+        background: #059669;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+      }
+
+      .badge {
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-weight: 600;
+      }
+
+      .modal-content {
+        border-radius: 15px;
+        border: none;
+      }
+
+      .modal-header {
+        background: #667eea;
+        color: white;
+        border-radius: 15px 15px 0 0;
+      }
+
+      .form-label {
+        font-weight: 600;
+        color: var(--dark-bg);
+        margin-bottom: 8px;
+      }
+
+      .form-control,
+      .form-select {
+        border-radius: 10px;
+        border: 2px solid #e5e7eb;
+        padding: 10px 15px;
+        transition: all 0.3s ease;
+      }
+
+      .form-control:focus,
+      .form-select:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+      }
+
+      .parameter-item {
+        background: #f9fafb;
+        border: 2px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 10px;
+      }
+
+      .parameter-values-badge {
+        display: inline-block;
+        background: var(--primary-color);
+        color: white;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        margin: 3px;
+      }
+
+      .remove-param-btn {
+        background: var(--danger-color);
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+      }
+
+      .alert {
+        border-radius: 10px;
+        border: none;
+      }
+
+      .loading-spinner {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 9999;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="/dashboard">
+          <i class="fas fa-flask"></i> Lab Management System
+        </a>
+        <button
+          class="navbar-toggler"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#navbarNav"
+        >
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav ms-auto">
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('dashboard') }}">
+                <i class="fas fa-home"></i> Dashboard
+              </a>
+            </li>
+            <li class="nav-item dropdown">
+              <a
+                class="nav-link dropdown-toggle"
+                href="#"
+                id="navbarDropdown"
+                role="button"
+                data-bs-toggle="dropdown"
+              >
+                <i class="fas fa-user-circle"></i> {{ session.user.full_name }}
+              </a>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li>
+                  <a class="dropdown-item" href="{{ url_for('profile') }}"
+                    ><i class="fas fa-user me-2"></i>Profile</a
+                  >
+                </li>
+                <li>
+                  <a class="dropdown-item" href="{{ url_for('settings') }}"
+                    ><i class="fas fa-cog me-2"></i>Settings</a
+                  >
+                </li>
+                <li><hr class="dropdown-divider" /></li>
+                <li>
+                  <a class="dropdown-item" href="{{ url_for('logout') }}"
+                    ><i class="fas fa-sign-out-alt me-2"></i>Logout</a
+                  >
+                </li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Dashboard Container -->
+    <div class="container-fluid dashboard-container">
+      <!-- Statistics Cards -->
+      <div class="row">
+        <div class="col-md-3">
+          <div class="stats-card users">
+            <div class="icon"><i class="fas fa-users"></i></div>
+            <h3 id="stat-users">{{ stats.total_users }}</h3>
+            <p>Total Users</p>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="stats-card courses">
+            <div class="icon"><i class="fas fa-book"></i></div>
+            <h3 id="stat-courses">{{ stats.total_courses }}</h3>
+            <p>Total Courses</p>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="stats-card labs">
+            <div class="icon"><i class="fas fa-flask"></i></div>
+            <h3 id="stat-labs">{{ stats.total_labs }}</h3>
+            <p>Total Labs</p>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="stats-card enrollments">
+            <div class="icon"><i class="fas fa-user-graduate"></i></div>
+            <h3 id="stat-enrollments">{{ stats.total_enrollments }}</h3>
+            <p>Total Enrollments</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Management Tabs -->
+      <div class="row">
+        <div class="col-12">
+          <div class="management-card">
+            <ul class="nav nav-tabs" id="managementTabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button
+                  class="nav-link active"
+                  id="users-tab"
+                  data-bs-toggle="tab"
+                  data-bs-target="#users"
+                  type="button"
+                >
+                  <i class="fas fa-users"></i> Users
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button
+                  class="nav-link"
+                  id="courses-tab"
+                  data-bs-toggle="tab"
+                  data-bs-target="#courses"
+                  type="button"
+                >
+                  <i class="fas fa-book"></i> Courses
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button
+                  class="nav-link"
+                  id="labs-tab"
+                  data-bs-toggle="tab"
+                  data-bs-target="#labs"
+                  type="button"
+                >
+                  <i class="fas fa-flask"></i> Labs
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button
+                  class="nav-link"
+                  id="enrollments-tab"
+                  data-bs-toggle="tab"
+                  data-bs-target="#enrollments"
+                  type="button"
+                >
+                  <i class="fas fa-user-graduate"></i> Enrollments
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button
+                  class="nav-link"
+                  id="sessions-tab"
+                  data-bs-toggle="tab"
+                  data-bs-target="#sessions"
+                  type="button"
+                >
+                  <i class="fas fa-terminal"></i> Lab Sessions
+                </button>
+              </li>
+            </ul>
+
+            <div class="tab-content" id="managementTabContent">
+              <!-- Users Tab -->
+              <div class="tab-pane fade show active" id="users" role="tabpanel">
+                <div class="table-container">
+                  <table class="table table-hover">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Email</th>
+                        <th>Full Name</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Last Login</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="users-table-body">
+                      <!-- Populated by JavaScript -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Courses Tab -->
+              <div class="tab-pane fade" id="courses" role="tabpanel">
+                <button
+                  class="btn btn-add"
+                  style="margin-top: 16px; margin-bottom: 16px"
+                  onclick="showCreateCourseModal()"
+                >
+                  <i class="fas fa-plus"></i> Create New Course
+                </button>
+                <div class="table-container">
+                  <table class="table table-hover">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Code</th>
+                        <th>Name</th>
+                        <th>Semester</th>
+                        <th>Labs</th>
+                        <th>Enrollments</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="courses-table-body">
+                      <!-- Populated by JavaScript -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Labs Tab -->
+              <div class="tab-pane fade" id="labs" role="tabpanel">
+                <button
+                  class="btn btn-add"
+                  style="margin-top: 16px; margin-bottom: 16px"
+                  onclick="showCreateLabModal()"
+                >
+                  <i class="fas fa-plus"></i> Create New Lab
+                </button>
+                <div class="table-container">
+                  <table class="table table-hover">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Course</th>
+                        <th>Difficulty</th>
+                        <th>Parameters</th>
+                        <th>Resources</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="labs-table-body">
+                      <!-- Populated by JavaScript -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Enrollments Tab -->
+              <div class="tab-pane fade" id="enrollments" role="tabpanel">
+                <div class="table-container">
+                  <table class="table table-hover">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Student</th>
+                        <th>Course</th>
+                        <th>Status</th>
+                        <th>Enrolled Date</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="enrollments-table-body">
+                      <!-- Populated by JavaScript -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Lab Sessions Tab -->
+              <div class="tab-pane fade" id="sessions" role="tabpanel">
+                <div class="table-container">
+                  <table class="table table-hover">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Student</th>
+                        <th>Lab</th>
+                        <th>Course</th>
+                        <th>Status</th>
+                        <th>Score</th>
+                        <th>Started</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="sessions-table-body">
+                      <!-- Populated by JavaScript -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create/Edit Course Modal -->
+    <div class="modal fade" id="courseModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="courseModalTitle">Create New Course</h5>
+            <button
+              type="button"
+              class="btn-close btn-close-white"
+              data-bs-dismiss="modal"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <form id="courseForm">
+              <input type="hidden" id="course-id" />
+              <div class="mb-3">
+                <label for="course-code" class="form-label"
+                  >Course Code *</label
+                >
+                <input
+                  type="text"
+                  class="form-control"
+                  id="course-code"
+                  required
+                />
+              </div>
+              <div class="mb-3">
+                <label for="course-name" class="form-label"
+                  >Course Name *</label
+                >
+                <input
+                  type="text"
+                  class="form-control"
+                  id="course-name"
+                  required
+                />
+              </div>
+              <div class="mb-3">
+                <label for="course-description" class="form-label"
+                  >Description</label
+                >
+                <textarea
+                  class="form-control"
+                  id="course-description"
+                  rows="3"
+                ></textarea>
+              </div>
+              <div class="mb-3">
+                <label for="course-semester" class="form-label">Semester</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="course-semester"
+                  placeholder="e.g., Fall2025"
+                />
+              </div>
+              <div class="mb-3">
+                <label for="course-max-students" class="form-label"
+                  >Max Students</label
+                >
+                <input
+                  type="number"
+                  class="form-control"
+                  id="course-max-students"
+                  value="50"
+                />
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-bs-dismiss="modal"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              onclick="saveCourse()"
+            >
+              Save Course
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create/Edit Lab Modal -->
+    <div class="modal fade" id="labModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="labModalTitle">Create New Lab</h5>
+            <button
+              type="button"
+              class="btn-close btn-close-white"
+              data-bs-dismiss="modal"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <form id="labForm">
+              <input type="hidden" id="lab-id" />
+
+              <!-- Basic Info -->
+              <h6 class="text-primary mb-3">
+                <i class="fas fa-info-circle"></i> Basic Information
+              </h6>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="lab-course" class="form-label">Course *</label>
+                  <select class="form-select" id="lab-course" required>
+                    <option value="">Select Course</option>
+                  </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="lab-name" class="form-label">Lab Name *</label>
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="lab-name"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label for="lab-description" class="form-label"
+                  >Description</label
+                >
+                <textarea
+                  class="form-control"
+                  id="lab-description"
+                  rows="3"
+                ></textarea>
+              </div>
+
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="lab-template-folder" class="form-label"
+                    >Template Folder *</label
+                  >
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="lab-template-folder"
+                    required
+                  />
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="lab-difficulty" class="form-label"
+                    >Difficulty</label
+                  >
+                  <select class="form-select" id="lab-difficulty">
+                    <option value="easy">Easy</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="row">
+                <div class="col-md-3 mb-3">
+                  <label for="lab-max-score" class="form-label"
+                    >Max Score</label
+                  >
+                  <input
+                    type="number"
+                    class="form-control"
+                    id="lab-max-score"
+                    value="100"
+                  />
+                </div>
+                <div class="col-md-3 mb-3">
+                  <label for="lab-minimum-score" class="form-label"
+                    >Minimum Score to Pass</label
+                  >
+                  <input
+                    type="number"
+                    class="form-control"
+                    id="lab-minimum-score"
+                    value="0"
+                    min="0"
+                  />
+                  <small class="text-muted">Score needed to pass the lab</small>
+                </div>
+                <div class="col-md-3 mb-3">
+                  <label for="lab-duration" class="form-label"
+                    >Duration (min)</label
+                  >
+                  <input
+                    type="number"
+                    class="form-control"
+                    id="lab-duration"
+                    value="60"
+                  />
+                </div>
+                <div class="col-md-3 mb-3">
+                  <label for="lab-deadline" class="form-label">Deadline</label>
+                  <input
+                    type="datetime-local"
+                    class="form-control"
+                    id="lab-deadline"
+                  />
+                </div>
+              </div>
+
+              <!-- Checkpoint Configuration -->
+              <h6 class="text-primary mb-3 mt-4">
+                <i class="fas fa-check-circle"></i> Checkpoints
+              </h6>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="lab-num-checkpoints" class="form-label"
+                    >Number of Checkpoints</label
+                  >
+                  <input
+                    type="number"
+                    class="form-control"
+                    id="lab-num-checkpoints"
+                    value="0"
+                    min="0"
+                    onchange="updateCheckpointRulesUI()"
+                  />
+                  <small class="text-muted"
+                    >Number of checkpoints students must complete</small
+                  >
+                </div>
+              </div>
+
+              <div
+                id="checkpoint-rules-container"
+                class="mb-3"
+                style="display: none"
+              >
+                <label class="form-label">Checkpoint Rules</label>
+                <div id="checkpoint-rules-list">
+                  <!-- Checkpoint rules will be added dynamically -->
+                </div>
+                <small class="text-muted">
+                  Configure decode method and expected answers for each
+                  checkpoint.
+                  <br />Available decode methods: plain, base64, md5, sha256,
+                  reverse, hex
+                </small>
+              </div>
+
+              <!-- Commands -->
+              <h6 class="text-primary mb-3 mt-4">
+                <i class="fas fa-terminal"></i> Commands
+              </h6>
+              <div class="mb-3">
+                <label for="lab-build-command" class="form-label"
+                  >Build Command</label
+                >
+                <input
+                  type="text"
+                  class="form-control"
+                  id="lab-build-command"
+                  placeholder="e.g., docker-compose up -d"
+                />
+                <small class="text-muted"
+                  >Command to build/setup the lab environment</small
+                >
+              </div>
+
+              <div class="mb-3">
+                <label for="lab-run-command" class="form-label">
+                  Run Command
+                </label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="lab-run-command"
+                  placeholder="e.g., python setup.py --field ${fieldName}"
+                />
+                <small class="text-muted"
+                  >Command to run when lab starts. Use ${paramName} for
+                  parameters</small
+                >
+              </div>
+
+              <div class="mb-3">
+                <label for="lab-output-result" class="form-label">
+                  Expected Output Result
+                </label>
+                <textarea
+                  class="form-control"
+                  id="lab-output-result"
+                  rows="4"
+                  placeholder="Expected output to display after running commands..."
+                  style="font-family: 'Consolas', 'Monaco', monospace"
+                ></textarea>
+                <small class="text-muted"
+                  >This will be shown to students after run commands
+                  complete</small
+                >
+              </div>
+
+              <!-- Lab Resources -->
+              <h6 class="text-primary mb-3 mt-4">
+                <i class="fas fa-folder-open"></i> Lab Resources
+              </h6>
+
+              <div class="mb-3">
+                <label for="lab-pdf-instruction" class="form-label">
+                  PDF Instruction URL
+                </label>
+                <div class="input-group">
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="lab-pdf-instruction"
+                    placeholder="e.g., /static/labs/lab1-instructions.pdf or https://..."
+                    readonly
+                  />
+                  <button
+                    class="btn btn-outline-primary"
+                    type="button"
+                    onclick="document.getElementById('pdf-file-input').click()"
+                  >
+                    <i class="fas fa-folder-open me-1"></i>Choose File
+                  </button>
+                  <button
+                    class="btn btn-outline-danger"
+                    type="button"
+                    onclick="clearPDFFile()"
+                    id="clear-pdf-btn"
+                    style="display: none"
+                  >
+                    <i class="fas fa-times"></i>
+                  </button>
+                </div>
+                <input
+                  type="file"
+                  id="pdf-file-input"
+                  accept=".pdf"
+                  style="display: none"
+                  onchange="handlePDFFileSelect(event)"
+                />
+                <small class="text-muted"
+                  >Choose a PDF file from your computer or enter a URL. Students
+                  can view this in the terminal.</small
+                >
+                <div id="pdf-preview" style="display: none; margin-top: 10px">
+                  <div class="alert alert-info mb-0">
+                    <i class="fas fa-file-pdf me-2"></i>
+                    <span id="pdf-filename"></span>
+                    <span id="pdf-filesize" class="ms-2 text-muted"></span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Accessible Resources -->
+              <h6 class="text-primary mb-3 mt-4">
+                <i class="fas fa-folder-open"></i> Accessible Resources
+              </h6>
+              <div class="mb-3">
+                <label for="lab-resources" class="form-label"
+                  >Resources (comma-separated)</label
+                >
+                <input
+                  type="text"
+                  class="form-control"
+                  id="lab-resources"
+                  placeholder="./src, ./database, ./scripts"
+                />
+                <small class="text-muted"
+                  >Folders/files students can access</small
+                >
+              </div>
+
+              <!-- Parameters Section -->
+              <h6 class="text-primary mb-3 mt-4">
+                <i class="fas fa-sliders-h"></i> Lab Parameters
+              </h6>
+              <div id="parameters-container">
+                <!-- Parameters will be added here dynamically -->
+              </div>
+              <button
+                type="button"
+                class="btn btn-outline-primary btn-sm"
+                onclick="addParameter()"
+              >
+                <i class="fas fa-plus"></i> Add Parameter
+              </button>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-bs-dismiss="modal"
+            >
+              Cancel
+            </button>
+            <button type="button" class="btn btn-primary" onclick="saveLab()">
+              Save Lab
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- View Lab Details Modal -->
+    <div class="modal fade" id="viewLabModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="viewLabModalTitle">Lab Details</h5>
+            <button
+              type="button"
+              class="btn-close btn-close-white"
+              data-bs-dismiss="modal"
+            ></button>
+          </div>
+          <div class="modal-body" id="viewLabModalBody">
+            <!-- Content will be populated dynamically -->
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-bs-dismiss="modal"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- View Lab Session Details Modal -->
+    <div class="modal fade" id="viewSessionModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="viewSessionModalTitle">
+              Lab Session Details
+            </h5>
+            <button
+              type="button"
+              class="btn-close btn-close-white"
+              data-bs-dismiss="modal"
+            ></button>
+          </div>
+          <div class="modal-body" id="viewSessionModalBody">
+            <!-- Content will be populated dynamically -->
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-bs-dismiss="modal"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              onclick="showGradeModal()"
+            >
+              <i class="fas fa-star"></i> Grade Session
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grade Lab Session Modal -->
+    <div class="modal fade" id="gradeSessionModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">
+              <i class="fas fa-star text-warning"></i> Grade Lab Session
+            </h5>
+            <button
+              type="button"
+              class="btn-close btn-close-white"
+              data-bs-dismiss="modal"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <form id="gradeForm">
+              <input type="hidden" id="grade-session-id" />
+
+              <div class="alert alert-info">
+                <strong id="grade-student-name"></strong><br />
+                <small id="grade-lab-name"></small>
+              </div>
+
+              <div class="mb-3">
+                <label for="grade-score" class="form-label">
+                  Score *
+                  <span class="text-muted small"
+                    >(Max: <span id="grade-max-score">100</span>)</span
+                  >
+                </label>
+                <input
+                  type="number"
+                  class="form-control"
+                  id="grade-score"
+                  min="0"
+                  step="0.5"
+                  required
+                  placeholder="Enter score"
+                />
+              </div>
+
+              <div class="mb-3">
+                <label for="grade-status" class="form-label">Status</label>
+                <select class="form-select" id="grade-status">
+                  <option value="in_progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                </select>
+              </div>
+
+              <div class="mb-3">
+                <label for="grade-notes" class="form-label"
+                  >Grading Notes</label
+                >
+                <textarea
+                  class="form-control"
+                  id="grade-notes"
+                  rows="4"
+                  placeholder="Enter feedback and comments for the student..."
+                ></textarea>
+                <small class="text-muted"
+                  >Optional: Provide feedback to help student improve</small
+                >
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-bs-dismiss="modal"
+            >
+              Cancel
+            </button>
+            <button type="button" class="btn btn-success" onclick="saveGrade()">
+              <i class="fas fa-check"></i> Save Grade
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div class="loading-spinner">
+      <div
+        class="spinner-border text-primary"
+        role="status"
+        style="width: 3rem; height: 3rem"
+      >
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+      // Global variables
+      let courses = [];
+      let labs = [];
+      let users = [];
+      let enrollments = [];
+      let labSessions = [];
+      let parameterCount = 0;
+
+      // Load data on page load
+      document.addEventListener("DOMContentLoaded", function () {
+        loadUsers();
+        loadCourses();
+        loadLabs();
+        loadEnrollments();
+        loadLabSessions();
+      });
+
+      // ==================== USERS ====================
+      async function loadUsers() {
+        try {
+          const response = await fetch("/admin/users");
+          users = await response.json();
+          renderUsersTable();
+        } catch (error) {
+          console.error("Error loading users:", error);
+          showAlert("Failed to load users", "danger");
+        }
+      }
+
+      function renderUsersTable() {
+        const tbody = document.getElementById("users-table-body");
+        tbody.innerHTML = users
+          .map(
+            (user) => `
+                <tr>
+                    <td>${user.id}</td>
+                    <td>${user.email}</td>
+                    <td>${user.full_name}</td>
+                    <td>
+                        <select class="form-select form-select-sm" onchange="updateUserRole(${
+                          user.id
+                        }, this.value)">
+                            <option value="student" ${
+                              user.role === "student" ? "selected" : ""
+                            }>Student</option>
+                            <option value="admin" ${
+                              user.role === "admin" ? "selected" : ""
+                            }>Admin</option>
+                        </select>
+                    </td>
+                    <td>
+                        <span class="badge ${
+                          user.is_active ? "bg-success" : "bg-secondary"
+                        }">
+                            ${user.is_active ? "Active" : "Inactive"}
+                        </span>
+                    </td>
+                    <td>${
+                      user.last_login
+                        ? new Date(user.last_login).toLocaleString()
+                        : "Never"
+                    }</td>
+                    <td>
+                        <button class="btn btn-sm btn-warning btn-action" onclick="toggleUserStatus(${
+                          user.id
+                        }, ${user.is_active})">
+                            <i class="fas fa-${
+                              user.is_active ? "ban" : "check"
+                            }"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger btn-action" onclick="deleteUser(${
+                          user.id
+                        })">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `
+          )
+          .join("");
+      }
+
+      async function updateUserRole(userId, role) {
+        try {
+          const response = await fetch(`/admin/user/${userId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ role }),
+          });
+          if (response.ok) {
+            showAlert("User role updated successfully", "success");
+            loadUsers();
+          }
+        } catch (error) {
+          showAlert("Failed to update user role", "danger");
+        }
+      }
+
+      async function toggleUserStatus(userId, currentStatus) {
+        try {
+          const response = await fetch(`/admin/user/${userId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ is_active: !currentStatus }),
+          });
+          if (response.ok) {
+            showAlert("User status updated", "success");
+            loadUsers();
+          }
+        } catch (error) {
+          showAlert("Failed to update user status", "danger");
+        }
+      }
+
+      async function deleteUser(userId) {
+        if (!confirm("Are you sure you want to delete this user?")) return;
+
+        try {
+          const response = await fetch(`/admin/user/${userId}`, {
+            method: "DELETE",
+          });
+          if (response.ok) {
+            showAlert("User deleted successfully", "success");
+            loadUsers();
+          }
+        } catch (error) {
+          showAlert("Failed to delete user", "danger");
+        }
+      }
+
+      // ==================== COURSES ====================
+      async function loadCourses() {
+        try {
+          const response = await fetch("/admin/courses");
+          courses = await response.json();
+          renderCoursesTable();
+          updateCourseSelect();
+        } catch (error) {
+          console.error("Error loading courses:", error);
+          showAlert("Failed to load courses", "danger");
+        }
+      }
+
+      function renderCoursesTable() {
+        const tbody = document.getElementById("courses-table-body");
+        tbody.innerHTML = courses
+          .map(
+            (course) => `
+                <tr>
+                    <td>${course.id}</td>
+                    <td><strong>${course.code}</strong></td>
+                    <td>${course.name}</td>
+                    <td>${course.semester || "-"}</td>
+                    <td><span class="badge bg-info">${
+                      course.lab_count
+                    } labs</span></td>
+                    <td><span class="badge bg-primary">${
+                      course.enrollment_count
+                    } students</span></td>
+                    <td>
+                        <span class="badge ${
+                          course.is_active ? "bg-success" : "bg-secondary"
+                        }">
+                            ${course.is_active ? "Active" : "Inactive"}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-primary btn-action" onclick="editCourse(${
+                          course.id
+                        })">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger btn-action" onclick="deleteCourse(${
+                          course.id
+                        })">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `
+          )
+          .join("");
+      }
+
+      function updateCourseSelect() {
+        const select = document.getElementById("lab-course");
+        select.innerHTML =
+          '<option value="">Select Course</option>' +
+          courses
+            .map(
+              (c) => `<option value="${c.id}">${c.code} - ${c.name}</option>`
+            )
+            .join("");
+      }
+
+      function showCreateCourseModal() {
+        document.getElementById("courseModalTitle").textContent =
+          "Create New Course";
+        document.getElementById("courseForm").reset();
+        document.getElementById("course-id").value = "";
+        new bootstrap.Modal(document.getElementById("courseModal")).show();
+      }
+
+      function editCourse(courseId) {
+        const course = courses.find((c) => c.id === courseId);
+        if (!course) return;
+
+        document.getElementById("courseModalTitle").textContent = "Edit Course";
+        document.getElementById("course-id").value = course.id;
+        document.getElementById("course-code").value = course.code;
+        document.getElementById("course-name").value = course.name;
+        document.getElementById("course-description").value =
+          course.description || "";
+        document.getElementById("course-semester").value =
+          course.semester || "";
+        document.getElementById("course-max-students").value =
+          course.max_students;
+
+        new bootstrap.Modal(document.getElementById("courseModal")).show();
+      }
+
+      async function saveCourse() {
+        const courseId = document.getElementById("course-id").value;
+        const data = {
+          code: document.getElementById("course-code").value,
+          name: document.getElementById("course-name").value,
+          description: document.getElementById("course-description").value,
+          semester: document.getElementById("course-semester").value,
+          max_students: parseInt(
+            document.getElementById("course-max-students").value
+          ),
+        };
+
+        try {
+          const url = courseId ? `/admin/course/${courseId}` : "/admin/course";
+          const method = courseId ? "PUT" : "POST";
+
+          const response = await fetch(url, {
+            method: method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+          });
+
+          if (response.ok) {
+            showAlert(
+              `Course ${courseId ? "updated" : "created"} successfully`,
+              "success"
+            );
+            bootstrap.Modal.getInstance(
+              document.getElementById("courseModal")
+            ).hide();
+            loadCourses();
+          } else {
+            const error = await response.json();
+            showAlert(error.error || "Failed to save course", "danger");
+          }
+        } catch (error) {
+          showAlert("Failed to save course", "danger");
+        }
+      }
+
+      async function deleteCourse(courseId) {
+        if (
+          !confirm(
+            "Are you sure you want to delete this course? All associated labs will be deleted."
+          )
+        )
+          return;
+
+        try {
+          const response = await fetch(`/admin/course/${courseId}`, {
+            method: "DELETE",
+          });
+          if (response.ok) {
+            showAlert("Course deleted successfully", "success");
+            loadCourses();
+          }
+        } catch (error) {
+          showAlert("Failed to delete course", "danger");
+        }
+      }
+
+      // ==================== LABS ====================
+      async function loadLabs() {
+        try {
+          const response = await fetch("/admin/labs");
+          labs = await response.json();
+          renderLabsTable();
+        } catch (error) {
+          console.error("Error loading labs:", error);
+          showAlert("Failed to load labs", "danger");
+        }
+      }
+
+      function renderLabsTable() {
+        const tbody = document.getElementById("labs-table-body");
+        tbody.innerHTML = labs
+          .map(
+            (lab) => `
+                <tr>
+                    <td>${lab.id}</td>
+                    <td><strong>${lab.name}</strong></td>
+                    <td>${lab.course_name}</td>
+                    <td>
+                        <span class="badge bg-${
+                          lab.difficulty === "easy"
+                            ? "success"
+                            : lab.difficulty === "medium"
+                            ? "warning"
+                            : "danger"
+                        }">
+                            ${lab.difficulty}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge bg-info">
+                            ${lab.parameters ? lab.parameters.length : 0} params
+                        </span>
+                    </td>
+                    <td>
+                        ${
+                          lab.pdf_instruction_url
+                            ? '<i class="fas fa-file-pdf text-success me-2" title="PDF available"></i>'
+                            : ""
+                        }
+                        ${
+                          lab.output_result
+                            ? '<i class="fas fa-terminal text-primary" title="Output configured"></i>'
+                            : ""
+                        }
+                        ${
+                          !lab.pdf_instruction_url && !lab.output_result
+                            ? '<span class="text-muted">-</span>'
+                            : ""
+                        }
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-info btn-action" onclick="viewLab(${
+                          lab.id
+                        })">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button class="btn btn-sm btn-primary btn-action" onclick="editLab(${
+                          lab.id
+                        })">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger btn-action" onclick="deleteLab(${
+                          lab.id
+                        })">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `
+          )
+          .join("");
+      }
+
+      function showCreateLabModal() {
+        document.getElementById("labModalTitle").textContent = "Create New Lab";
+        document.getElementById("labForm").reset();
+        document.getElementById("lab-id").value = "";
+        document.getElementById("parameters-container").innerHTML = "";
+        parameterCount = 0;
+
+        // Reset checkpoint fields
+        document.getElementById("lab-num-checkpoints").value = "0";
+        document.getElementById("checkpoint-rules-list").dataset.rules = "[]";
+        document.getElementById("checkpoint-rules-container").style.display =
+          "none";
+        document.getElementById("checkpoint-rules-list").innerHTML = "";
+
+        new bootstrap.Modal(document.getElementById("labModal")).show();
+      }
+
+      function editLab(labId) {
+        const lab = labs.find((l) => l.id === labId);
+        if (!lab) return;
+
+        document.getElementById("labModalTitle").textContent = "Edit Lab";
+        document.getElementById("lab-id").value = lab.id;
+        document.getElementById("lab-course").value = lab.course_id;
+        document.getElementById("lab-name").value = lab.name;
+        document.getElementById("lab-description").value =
+          lab.description || "";
+        document.getElementById("lab-template-folder").value =
+          lab.template_folder;
+        document.getElementById("lab-difficulty").value = lab.difficulty;
+        document.getElementById("lab-max-score").value = lab.max_score;
+        document.getElementById("lab-minimum-score").value =
+          lab.minimum_score || 0;
+        document.getElementById("lab-duration").value = lab.estimated_duration;
+        document.getElementById("lab-deadline").value = lab.deadline
+          ? lab.deadline.slice(0, 16)
+          : "";
+        document.getElementById("lab-build-command").value =
+          lab.build_command || "";
+        document.getElementById("lab-run-command").value =
+          lab.run_commands || "";
+
+        // Parse accessible resources
+        try {
+          const resources = JSON.parse(lab.accessible_resources || "[]");
+          document.getElementById("lab-resources").value = resources.join(", ");
+        } catch (e) {
+          document.getElementById("lab-resources").value = "";
+        }
+
+        // Load parameters
+        document.getElementById("parameters-container").innerHTML = "";
+        parameterCount = 0;
+        if (lab.parameters && lab.parameters.length > 0) {
+          lab.parameters.forEach((param) => {
+            addParameter(param);
+          });
+        }
+
+        // Load checkpoint configuration
+        document.getElementById("lab-num-checkpoints").value =
+          lab.num_checkpoints || 0;
+
+        // Store checkpoint rules data for UI rebuild
+        if (lab.checkpoint_rules) {
+          try {
+            const rules =
+              typeof lab.checkpoint_rules === "string"
+                ? JSON.parse(lab.checkpoint_rules)
+                : lab.checkpoint_rules;
+            document.getElementById("checkpoint-rules-list").dataset.rules =
+              JSON.stringify(rules);
+          } catch (e) {
+            console.error("Error parsing checkpoint rules:", e);
+            document.getElementById("checkpoint-rules-list").dataset.rules =
+              "[]";
+          }
+        } else {
+          document.getElementById("checkpoint-rules-list").dataset.rules = "[]";
+        }
+
+        // Rebuild checkpoint rules UI
+        updateCheckpointRulesUI();
+
+        // Load PDF instruction URL
+        document.getElementById("lab-pdf-instruction").value =
+          lab.pdf_instruction_url || "";
+
+        // Load output result
+        document.getElementById("lab-output-result").value =
+          lab.output_result || "";
+
+        new bootstrap.Modal(document.getElementById("labModal")).show();
+      }
+
+      function viewLab(labId) {
+        const lab = labs.find((l) => l.id === labId);
+        if (!lab) return;
+
+        const resources = JSON.parse(lab.accessible_resources || "[]");
+
+        let parametersHtml = "";
+        if (lab.parameters && lab.parameters.length > 0) {
+          parametersHtml = `
+            <div class="mt-3">
+              <h6 class="text-primary"><i class="fas fa-sliders-h"></i> Parameters (${lab.parameters.length})</h6>
+          `;
+          lab.parameters.forEach((param) => {
+            const values = JSON.parse(param.parameter_values || "[]");
+            parametersHtml += `
+              <div class="parameter-item mb-2">
+                <strong>${param.parameter_name}</strong>
+                ${
+                  param.description
+                    ? `<p class="mb-1 text-muted small">${param.description}</p>`
+                    : ""
+                }
+                <div>
+                  ${values
+                    .map(
+                      (v) => `<span class="parameter-values-badge">${v}</span>`
+                    )
+                    .join("")}
+                </div>
+              </div>
+            `;
+          });
+          parametersHtml += "</div>";
+        } else {
+          parametersHtml = '<p class="text-muted">No parameters configured</p>';
+        }
+
+        const modalBody = `
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="text-muted small">Lab Name</label>
+              <p class="mb-0"><strong>${lab.name}</strong></p>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="text-muted small">Course</label>
+              <p class="mb-0">${lab.course_name}</p>
+            </div>
+          </div>
+          
+          <div class="row">
+            <div class="col-md-4 mb-3">
+              <label class="text-muted small">Difficulty</label>
+              <p class="mb-0"><span class="badge bg-${
+                lab.difficulty === "easy"
+                  ? "success"
+                  : lab.difficulty === "medium"
+                  ? "warning"
+                  : "danger"
+              }">${lab.difficulty}</span></p>
+            </div>
+            <div class="col-md-4 mb-3">
+              <label class="text-muted small">Max Score</label>
+              <p class="mb-0">${lab.max_score}</p>
+            </div>
+            <div class="col-md-4 mb-3">
+              <label class="text-muted small">Duration</label>
+              <p class="mb-0">${lab.estimated_duration} min</p>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="text-muted small">Description</label>
+            <p class="mb-0">${
+              lab.description || '<em class="text-muted">No description</em>'
+            }</p>
+          </div>
+
+          <div class="mb-3">
+            <label class="text-muted small">Template Folder</label>
+            <p class="mb-0"><code>${lab.template_folder}</code></p>
+          </div>
+
+          <div class="mb-3">
+            <label class="text-muted small"><i class="fas fa-hammer"></i> Build Command</label>
+            <p class="mb-0">${
+              lab.build_command
+                ? `<code>${lab.build_command}</code>`
+                : '<em class="text-muted">Not configured</em>'
+            }</p>
+          </div>
+
+          <div class="mb-3">
+            <label class="text-muted small"><i class="fas fa-play"></i> Run Command</label>
+            <p class="mb-0">${
+              lab.run_commands
+                ? `<code>${lab.run_commands}</code>`
+                : '<em class="text-muted">Not configured</em>'
+            }</p>
+          </div>
+
+          <div class="mb-3">
+            <label class="text-muted small"><i class="fas fa-folder-open"></i> Accessible Resources</label>
+            <p class="mb-0">${
+              resources.length > 0
+                ? resources
+                    .map(
+                      (r) => `<span class="badge bg-secondary me-1">${r}</span>`
+                    )
+                    .join("")
+                : '<em class="text-muted">No resources</em>'
+            }</p>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="text-muted small"><i class="fas fa-file-pdf"></i> PDF Instructions</label>
+              <p class="mb-0">${
+                lab.pdf_instruction_url
+                  ? `<span class="badge bg-success"><i class="fas fa-check-circle me-1"></i>Available</span> 
+                     <a href="${lab.pdf_instruction_url}" target="_blank" class="btn btn-sm btn-outline-primary ms-2">
+                       <i class="fas fa-external-link-alt me-1"></i>View PDF
+                     </a>`
+                  : '<span class="badge bg-secondary"><i class="fas fa-times-circle me-1"></i>Not configured</span>'
+              }</p>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="text-muted small"><i class="fas fa-terminal"></i> Expected Output</label>
+              <p class="mb-0">${
+                lab.output_result
+                  ? `<span class="badge bg-success"><i class="fas fa-check-circle me-1"></i>Configured</span>`
+                  : '<span class="badge bg-secondary"><i class="fas fa-times-circle me-1"></i>Not configured</span>'
+              }</p>
+            </div>
+          </div>
+
+          ${
+            lab.output_result
+              ? `
+          <div class="mb-3">
+            <label class="text-muted small"><i class="fas fa-code"></i> Expected Output Result</label>
+            <pre class="bg-dark text-light p-3 rounded" style="font-family: 'Consolas', monospace; font-size: 0.85rem; max-height: 200px; overflow-y: auto;">${lab.output_result}</pre>
+          </div>
+          `
+              : ""
+          }
+
+          ${parametersHtml}
+        `;
+
+        document.getElementById(
+          "viewLabModalTitle"
+        ).textContent = `Lab Details - ${lab.name}`;
+        document.getElementById("viewLabModalBody").innerHTML = modalBody;
+        new bootstrap.Modal(document.getElementById("viewLabModal")).show();
+      }
+
+      function addParameter(existingParam = null) {
+        const container = document.getElementById("parameters-container");
+        const id = parameterCount++;
+
+        const values = existingParam
+          ? JSON.parse(existingParam.parameter_values || "[]")
+          : [];
+
+        const paramHtml = `
+                <div class="parameter-item" id="param-${id}">
+                    <div class="row">
+                        <div class="col-md-4 mb-2">
+                            <label class="form-label">Parameter Name</label>
+                            <input type="text" class="form-control form-control-sm param-name" 
+                                   placeholder="e.g., \${fieldName}" 
+                                   value="${
+                                     existingParam
+                                       ? existingParam.parameter_name
+                                       : ""
+                                   }">
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label">Values (comma-separated)</label>
+                            <input type="text" class="form-control form-control-sm param-values" 
+                                   placeholder="e.g., name, age, email" 
+                                   value="${values.join(", ")}">
+                        </div>
+                        <div class="col-md-2 mb-2">
+                            <label class="form-label">&nbsp;</label>
+                            <button type="button" class="btn remove-param-btn btn-sm w-100" 
+                                    onclick="removeParameter(${id})">
+                                <i class="fas fa-trash"></i> Remove
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                <i class="fas fa-file me-1"></i>File Path (optional)
+                            </label>
+                            <input type="text" class="form-control form-control-sm param-file-path" 
+                                   placeholder="e.g., config/database.conf" 
+                                   value="${
+                                     existingParam
+                                       ? existingParam.file_path || ""
+                                       : ""
+                                   }">
+                            <small class="text-muted">File to modify with this parameter</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Description</label>
+                            <input type="text" class="form-control form-control-sm param-description" 
+                                   placeholder="Optional description" 
+                                   value="${
+                                     existingParam
+                                       ? existingParam.description || ""
+                                       : ""
+                                   }">
+                        </div>
+                    </div>
+                </div>
+            `;
+
+        container.insertAdjacentHTML("beforeend", paramHtml);
+      }
+
+      function removeParameter(id) {
+        const element = document.getElementById(`param-${id}`);
+        if (element) {
+          element.remove();
+        }
+      }
+
+      function collectParameters() {
+        const parameters = [];
+        const paramItems = document.querySelectorAll(".parameter-item");
+
+        paramItems.forEach((item) => {
+          const nameEl = item.querySelector(".param-name");
+          const valuesEl = item.querySelector(".param-values");
+          const filePathEl = item.querySelector(".param-file-path");
+          const descriptionEl = item.querySelector(".param-description");
+
+          const name = nameEl ? nameEl.value.trim() : "";
+          const valuesStr = valuesEl ? valuesEl.value.trim() : "";
+          const filePath = filePathEl ? filePathEl.value.trim() : "";
+          const description = descriptionEl ? descriptionEl.value.trim() : "";
+
+          if (name && valuesStr) {
+            const values = valuesStr
+              .split(",")
+              .map((v) => v.trim())
+              .filter((v) => v);
+            parameters.push({
+              parameter_name: name,
+              parameter_values: values,
+              file_path: filePath || null,
+              description: description,
+            });
+          }
+        });
+
+        return parameters;
+      }
+
+      // ==================== CHECKPOINT RULES ====================
+      function updateCheckpointRulesUI() {
+        const numCheckpoints =
+          parseInt(document.getElementById("lab-num-checkpoints").value) || 0;
+        const container = document.getElementById("checkpoint-rules-container");
+        const rulesList = document.getElementById("checkpoint-rules-list");
+
+        if (numCheckpoints > 0) {
+          container.style.display = "block";
+
+          // Get existing rules if editing
+          let existingRules = [];
+          try {
+            const existingRulesData = rulesList.dataset.rules;
+            if (existingRulesData) {
+              existingRules = JSON.parse(existingRulesData);
+            }
+          } catch (e) {
+            existingRules = [];
+          }
+
+          // Clear and rebuild
+          rulesList.innerHTML = "";
+
+          for (let i = 0; i < numCheckpoints; i++) {
+            const rule = existingRules[i] || {
+              decode_method: "plain",
+              expected_answer: "",
+              case_sensitive: false,
+              use_auto_flag: false,
+              points: 10,
+            };
+
+            const ruleCard = document.createElement("div");
+            ruleCard.className = "card mb-2 checkpoint-rule-item";
+            ruleCard.innerHTML = `
+              <div class="card-body">
+                <h6 class="card-title">Checkpoint ${i + 1}</h6>
+                <div class="row">
+                  <div class="col-md-3 mb-2">
+                    <label class="form-label small">Decode Method</label>
+                    <select class="form-select form-select-sm checkpoint-decode-method">
+                      <option value="plain" ${
+                        rule.decode_method === "plain" ? "selected" : ""
+                      }>Plain</option>
+                      <option value="base64" ${
+                        rule.decode_method === "base64" ? "selected" : ""
+                      }>Base64</option>
+                      <option value="md5" ${
+                        rule.decode_method === "md5" ? "selected" : ""
+                      }>MD5</option>
+                      <option value="sha256" ${
+                        rule.decode_method === "sha256" ? "selected" : ""
+                      }>SHA256</option>
+                      <option value="sha1" ${
+                        rule.decode_method === "sha1" ? "selected" : ""
+                      }>SHA1</option>
+                      <option value="reverse" ${
+                        rule.decode_method === "reverse" ? "selected" : ""
+                      }>Reverse</option>
+                      <option value="hex" ${
+                        rule.decode_method === "hex" ? "selected" : ""
+                      }>Hex</option>
+                    </select>
+                  </div>
+                  <div class="col-md-5 mb-2">
+                    <label class="form-label small">Expected Answer</label>
+                    <input type="text" class="form-control form-control-sm checkpoint-expected-answer" 
+                           value="${
+                             rule.expected_answer || ""
+                           }" placeholder="Expected answer after decode">
+                  </div>
+                  <div class="col-md-2 mb-2">
+                    <label class="form-label small">Points</label>
+                    <input type="number" class="form-control form-control-sm checkpoint-points" 
+                           value="${
+                             rule.points || 10
+                           }" min="0" placeholder="Points">
+                  </div>
+                  <div class="col-md-1 mb-2">
+                    <label class="form-label small">Case Sensitive</label>
+                    <div class="form-check mt-2">
+                      <input class="form-check-input checkpoint-case-sensitive" type="checkbox" 
+                             ${rule.case_sensitive ? "checked" : ""}>
+                    </div>
+                  </div>
+                  <div class="col-md-1 mb-2">
+                    <label class="form-label small">Auto Flag</label>
+                    <div class="form-check mt-2">
+                      <input class="form-check-input checkpoint-use-auto-flag" type="checkbox" 
+                             ${rule.use_auto_flag ? "checked" : ""}>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            `;
+            rulesList.appendChild(ruleCard);
+          }
+        } else {
+          container.style.display = "none";
+          rulesList.innerHTML = "";
+        }
+      }
+
+      function collectCheckpointRules() {
+        const numCheckpoints =
+          parseInt(document.getElementById("lab-num-checkpoints").value) || 0;
+
+        if (numCheckpoints === 0) {
+          return null;
+        }
+
+        const ruleItems = document.querySelectorAll(".checkpoint-rule-item");
+        const rules = [];
+
+        ruleItems.forEach((item) => {
+          const decodeMethod = item.querySelector(
+            ".checkpoint-decode-method"
+          ).value;
+          const expectedAnswer = item
+            .querySelector(".checkpoint-expected-answer")
+            .value.trim();
+          const caseSensitive = item.querySelector(
+            ".checkpoint-case-sensitive"
+          ).checked;
+          const useAutoFlag = item.querySelector(
+            ".checkpoint-use-auto-flag"
+          ).checked;
+          const points =
+            parseInt(item.querySelector(".checkpoint-points").value) || 10;
+
+          rules.push({
+            decode_method: decodeMethod,
+            expected_answer: expectedAnswer,
+            case_sensitive: caseSensitive,
+            use_auto_flag: useAutoFlag,
+            points: points,
+          });
+        });
+
+        return rules;
+      }
+
+      async function saveLab() {
+        const labId = document.getElementById("lab-id").value;
+        const durationValue = document.getElementById("lab-duration").value;
+
+        // Validation
+        if (
+          !durationValue ||
+          isNaN(parseInt(durationValue)) ||
+          parseInt(durationValue) <= 0
+        ) {
+          showAlert("Please enter a valid duration (minutes)", "warning");
+          return;
+        }
+
+        const resourcesStr = document.getElementById("lab-resources").value;
+        const resources = resourcesStr
+          .split(",")
+          .map((r) => r.trim())
+          .filter((r) => r);
+
+        const parameters = collectParameters();
+        const numCheckpoints =
+          parseInt(document.getElementById("lab-num-checkpoints").value) || 0;
+        const checkpointRules = collectCheckpointRules();
+
+        let pdfInstructionUrl = document
+          .getElementById("lab-pdf-instruction")
+          .value.trim();
+        const outputResult = document
+          .getElementById("lab-output-result")
+          .value.trim();
+
+        const data = {
+          course_id: parseInt(document.getElementById("lab-course").value),
+          name: document.getElementById("lab-name").value,
+          description: document.getElementById("lab-description").value,
+          template_folder: document.getElementById("lab-template-folder").value,
+          accessible_resources: resources,
+          build_command: document.getElementById("lab-build-command").value,
+          run_commands: document.getElementById("lab-run-command").value,
+          difficulty: document.getElementById("lab-difficulty").value,
+          max_score: parseInt(document.getElementById("lab-max-score").value),
+          minimum_score:
+            parseInt(document.getElementById("lab-minimum-score").value) || 0,
+          estimated_duration: parseInt(durationValue),
+          deadline: document.getElementById("lab-deadline").value || null,
+          parameters: parameters,
+          num_checkpoints: numCheckpoints,
+          checkpoint_rules: checkpointRules,
+          pdf_instruction_url: pdfInstructionUrl || null,
+          output_result: outputResult || null,
+        };
+
+        console.log("Saving lab with data:", data);
+
+        try {
+          // First, upload PDF if a file is selected
+          if (selectedPDFFile) {
+            showAlert("Uploading PDF file...", "info");
+
+            // Save lab first to get lab ID
+            if (!labId) {
+              const tempResponse = await fetch("/admin/lab", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+              });
+
+              if (!tempResponse.ok) {
+                const error = await tempResponse.json();
+                showAlert(error.error || "Failed to create lab", "danger");
+                return;
+              }
+
+              const tempResult = await tempResponse.json();
+              const newLabId = tempResult.id;
+
+              // Upload PDF
+              const uploadedUrl = await uploadPDFFile(newLabId);
+              if (uploadedUrl) {
+                // Update lab with PDF URL
+                data.pdf_instruction_url = uploadedUrl;
+                const updateResponse = await fetch(`/admin/lab/${newLabId}`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(data),
+                });
+
+                if (updateResponse.ok) {
+                  showAlert("Lab created with PDF successfully", "success");
+                  bootstrap.Modal.getInstance(
+                    document.getElementById("labModal")
+                  ).hide();
+                  clearPDFFile();
+                  loadLabs();
+                  return;
+                }
+              }
+            } else {
+              // Existing lab - upload PDF
+              const uploadedUrl = await uploadPDFFile(labId);
+              if (uploadedUrl) {
+                data.pdf_instruction_url = uploadedUrl;
+              }
+            }
+          }
+
+          // Normal save without PDF upload
+          const url = labId ? `/admin/lab/${labId}` : "/admin/lab";
+          const method = labId ? "PUT" : "POST";
+
+          const response = await fetch(url, {
+            method: method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+          });
+
+          if (response.ok) {
+            showAlert(
+              `Lab ${labId ? "updated" : "created"} successfully`,
+              "success"
+            );
+            bootstrap.Modal.getInstance(
+              document.getElementById("labModal")
+            ).hide();
+            clearPDFFile();
+            loadLabs();
+          } else {
+            const error = await response.json();
+            console.error("Server error:", error);
+            showAlert(error.error || "Failed to save lab", "danger");
+          }
+        } catch (error) {
+          console.error("Error saving lab:", error);
+          showAlert("Failed to save lab: " + error.message, "danger");
+        }
+      }
+
+      async function deleteLab(labId) {
+        if (!confirm("Are you sure you want to delete this lab?")) return;
+
+        try {
+          const response = await fetch(`/admin/lab/${labId}`, {
+            method: "DELETE",
+          });
+          if (response.ok) {
+            showAlert("Lab deleted successfully", "success");
+            loadLabs();
+          }
+        } catch (error) {
+          showAlert("Failed to delete lab", "danger");
+        }
+      }
+
+      // ==================== ENROLLMENTS ====================
+      async function loadEnrollments() {
+        try {
+          const response = await fetch("/admin/enrollments");
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          const data = await response.json();
+          enrollments = Array.isArray(data) ? data : [];
+          renderEnrollmentsTable();
+          // Update statistics
+          document.getElementById("stat-enrollments").textContent =
+            enrollments.length;
+        } catch (error) {
+          console.error("Error loading enrollments:", error);
+          enrollments = [];
+          renderEnrollmentsTable();
+          document.getElementById("stat-enrollments").textContent = "0";
+          // Don't show alert if it's just empty data
+          if (!error.message.includes("404")) {
+            showAlert("Failed to load enrollments: " + error.message, "danger");
+          }
+        }
+      }
+
+      function renderEnrollmentsTable() {
+        const tbody = document.getElementById("enrollments-table-body");
+
+        if (!enrollments || enrollments.length === 0) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="6" class="text-center text-muted py-5">
+                <div class="d-flex flex-column align-items-center justify-content-center">
+                  <i class="fas fa-inbox fa-3x mb-3"></i>
+                  <p class="mb-0">No enrollments found</p>
+                </div>
+              </td>
+            </tr>
+          `;
+          return;
+        }
+
+        tbody.innerHTML = enrollments
+          .map(
+            (enrollment) => `
+                <tr>
+                    <td>${enrollment.id}</td>
+                    <td>${enrollment.user_name}<br><small class="text-muted">${
+              enrollment.user_email
+            }</small></td>
+                    <td>${enrollment.course_code} - ${
+              enrollment.course_name
+            }</td>
+                    <td>
+                        <span class="badge ${
+                          enrollment.status === "active"
+                            ? "bg-success"
+                            : "bg-secondary"
+                        }">
+                            ${enrollment.status}
+                        </span>
+                    </td>
+                    <td>${new Date(
+                      enrollment.enrolled_at
+                    ).toLocaleDateString()}</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger btn-action" onclick="deleteEnrollment(${
+                          enrollment.id
+                        })">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `
+          )
+          .join("");
+      }
+
+      async function deleteEnrollment(enrollmentId) {
+        if (!confirm("Are you sure you want to delete this enrollment?"))
+          return;
+
+        try {
+          const response = await fetch(`/admin/enrollment/${enrollmentId}`, {
+            method: "DELETE",
+          });
+          if (response.ok) {
+            showAlert("Enrollment deleted successfully", "success");
+            loadEnrollments();
+          }
+        } catch (error) {
+          showAlert("Failed to delete enrollment", "danger");
+        }
+      }
+
+      // ==================== LAB SESSIONS ====================
+      async function loadLabSessions() {
+        try {
+          const response = await fetch("/admin/lab_sessions");
+          labSessions = await response.json();
+          renderLabSessionsTable();
+        } catch (error) {
+          console.error("Error loading lab sessions:", error);
+          showAlert("Failed to load lab sessions", "danger");
+        }
+      }
+
+      function renderLabSessionsTable() {
+        const tbody = document.getElementById("sessions-table-body");
+
+        if (!labSessions || labSessions.length === 0) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="8" class="text-center text-muted py-5">
+                <div class="d-flex flex-column align-items-center justify-content-center">
+                  <i class="fas fa-terminal fa-3x mb-3"></i>
+                  <p class="mb-0">No lab sessions found</p>
+                </div>
+              </td>
+            </tr>
+          `;
+          return;
+        }
+
+        tbody.innerHTML = labSessions
+          .map(
+            (session) => `
+                <tr>
+                    <td>${session.id}</td>
+                    <td>${session.user_name}<br><small class="text-muted">${
+              session.user_email
+            }</small></td>
+                    <td>${session.lab_name}</td>
+                    <td>${session.course_name}</td>
+                    <td>
+                        <span class="badge bg-${
+                          session.status === "completed"
+                            ? "success"
+                            : session.status === "in_progress"
+                            ? "primary"
+                            : "secondary"
+                        }">
+                            ${session.status}
+                        </span>
+                    </td>
+                    <td>${session.score || "-"}</td>
+                    <td>${
+                      session.started_at
+                        ? new Date(session.started_at).toLocaleString()
+                        : "Not started"
+                    }</td>
+                    <td>
+                        <button class="btn btn-sm btn-info btn-action" onclick="viewLabSession(${
+                          session.id
+                        })" title="View Details">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button class="btn btn-sm btn-warning btn-action" onclick="gradeLabSessionDirect(${
+                          session.id
+                        })" title="Grade Session">
+                            <i class="fas fa-star"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger btn-action" onclick="deleteLabSession(${
+                          session.id
+                        })" title="Delete Session">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `
+          )
+          .join("");
+      }
+
+      async function viewLabSession(sessionId) {
+        try {
+          const response = await fetch(
+            `/admin/lab_session/${sessionId}/commands`
+          );
+          const data = await response.json();
+
+          const session = labSessions.find((s) => s.id === sessionId);
+
+          let commandsHtml = "";
+          if (data.commands && data.commands.length > 0) {
+            commandsHtml =
+              '<div class="mt-3" style="max-height: 600px; overflow-y: auto;">';
+
+            data.commands
+              .slice(-20)
+              .reverse()
+              .forEach((cmd, index) => {
+                const statusBadge = cmd.is_allowed
+                  ? '<span class="badge bg-success"><i class="fas fa-check"></i> Allowed</span>'
+                  : '<span class="badge bg-danger"><i class="fas fa-times"></i> Blocked</span>';
+
+                const exitCodeBadge =
+                  cmd.exit_code !== null && cmd.exit_code !== undefined
+                    ? cmd.exit_code === 0
+                      ? '<span class="badge bg-success"><i class="fas fa-check-circle"></i> Exit 0</span>'
+                      : '<span class="badge bg-warning text-dark"><i class="fas fa-exclamation-circle"></i> Exit ' +
+                        cmd.exit_code +
+                        "</span>"
+                    : "";
+
+                const timeStr = cmd.executed_at
+                  ? new Date(cmd.executed_at).toLocaleString("vi-VN", {
+                      year: "numeric",
+                      month: "2-digit",
+                      day: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })
+                  : "-";
+
+                // Escape HTML in output
+                const escapeHtml = (text) => {
+                  const div = document.createElement("div");
+                  div.textContent = text;
+                  return div.innerHTML;
+                };
+
+                commandsHtml += `
+                <div class="card mb-3 shadow-sm ${
+                  !cmd.is_allowed ? "border-danger border-2" : "border"
+                }">
+                  <div class="card-header ${
+                    !cmd.is_allowed ? "bg-danger bg-opacity-10" : "bg-light"
+                  }">
+                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                      <div class="d-flex flex-wrap gap-1 align-items-center">
+                        <span class="badge bg-secondary">#${
+                          data.commands.length - index
+                        }</span>
+                        ${statusBadge}
+                        ${exitCodeBadge}
+                        ${
+                          cmd.blocked_reason
+                            ? '<span class="badge bg-warning text-dark"><i class="fas fa-shield-alt"></i> ' +
+                              escapeHtml(cmd.blocked_reason) +
+                              "</span>"
+                            : ""
+                        }
+                      </div>
+                      <small class="text-muted">
+                        <i class="far fa-clock"></i> ${timeStr}
+                      </small>
+                    </div>
+                  </div>
+                  <div class="card-body">
+                    <div class="mb-3">
+                      <div class="d-flex align-items-center mb-2">
+                        <i class="fas fa-terminal text-primary me-2"></i>
+                        <strong class="text-primary">Command</strong>
+                      </div>
+                      <div class="bg-dark text-light p-3 rounded" style="font-family: 'Courier New', monospace; font-size: 14px; word-wrap: break-word; white-space: pre-wrap;">$ ${escapeHtml(
+                        cmd.command
+                      )}</div>
+                    </div>
+                    ${
+                      cmd.output && cmd.output.trim()
+                        ? `
+                    <div>
+                      <div class="d-flex align-items-center mb-2">
+                        <i class="fas fa-file-alt text-success me-2"></i>
+                        <strong class="text-success">Output</strong>
+                      </div>
+                      <div class="bg-dark text-light p-3 rounded" style="font-family: 'Courier New', monospace; font-size: 13px; max-height: 300px; overflow-y: auto; word-wrap: break-word; white-space: pre-wrap;">${escapeHtml(
+                        cmd.output
+                      )}</div>
+                    </div>
+                    `
+                        : '<div class="text-muted fst-italic"><i class="fas fa-info-circle"></i> No output</div>'
+                    }
+                  </div>
+                </div>
+              `;
+              });
+
+            commandsHtml += "</div>";
+          } else {
+            commandsHtml =
+              '<div class="text-center py-5"><i class="fas fa-inbox fa-3x text-muted mb-3"></i><p class="text-muted">No commands executed yet</p></div>';
+          }
+
+          const modalBody = `
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label class="text-muted small">Student</label>
+                <p class="mb-0"><strong>${
+                  session ? session.user_name : "N/A"
+                }</strong></p>
+                <small class="text-muted">${
+                  session ? session.user_email : ""
+                }</small>
+              </div>
+              <div class="col-md-6">
+                <label class="text-muted small">Lab</label>
+                <p class="mb-0">${session ? session.lab_name : "N/A"}</p>
+                <small class="text-muted">${
+                  session ? session.course_name : ""
+                }</small>
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-4">
+                <label class="text-muted small">Status</label>
+                <p class="mb-0">
+                  <span class="badge bg-${
+                    session && session.status === "completed"
+                      ? "success"
+                      : session && session.status === "in_progress"
+                      ? "primary"
+                      : "secondary"
+                  }">${session ? session.status : "N/A"}</span>
+                </p>
+              </div>
+              <div class="col-md-4">
+                <label class="text-muted small">Score</label>
+                <p class="mb-0">${
+                  session && session.score ? session.score : "-"
+                }</p>
+              </div>
+              <div class="col-md-4">
+                <label class="text-muted small">Started At</label>
+                <p class="mb-0">${
+                  session && session.started_at
+                    ? new Date(session.started_at).toLocaleString()
+                    : "Not started"
+                }</p>
+              </div>
+            </div>
+
+            <hr>
+
+            <div class="mb-3">
+              <h6 class="text-primary"><i class="fas fa-terminal"></i> Command Statistics</h6>
+              <div class="row">
+                <div class="col-md-6">
+                  <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded">
+                    <span>Total Commands:</span>
+                    <span class="badge bg-primary">${data.total_commands}</span>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded">
+                    <span>Blocked Commands:</span>
+                    <span class="badge bg-danger">${
+                      data.blocked_commands
+                    }</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <h6 class="text-primary"><i class="fas fa-history"></i> Recent Commands (Last 20)</h6>
+            ${commandsHtml}
+          `;
+
+          document.getElementById(
+            "viewSessionModalTitle"
+          ).textContent = `Lab Session #${sessionId}`;
+          document.getElementById("viewSessionModalBody").innerHTML = modalBody;
+          new bootstrap.Modal(
+            document.getElementById("viewSessionModal")
+          ).show();
+        } catch (error) {
+          showAlert("Failed to load session commands", "danger");
+        }
+      }
+
+      async function deleteLabSession(sessionId) {
+        if (!confirm("Are you sure you want to delete this lab session?"))
+          return;
+
+        try {
+          const response = await fetch(`/admin/lab_session/${sessionId}`, {
+            method: "DELETE",
+          });
+          if (response.ok) {
+            showAlert("Lab session deleted successfully", "success");
+            loadLabSessions();
+          }
+        } catch (error) {
+          showAlert("Failed to delete lab session", "danger");
+        }
+      }
+
+      // ==================== GRADING FUNCTIONS ====================
+      let currentGradingSessionId = null;
+      let currentGradingSession = null;
+
+      function gradeLabSessionDirect(sessionId) {
+        currentGradingSessionId = sessionId;
+        currentGradingSession = labSessions.find((s) => s.id === sessionId);
+
+        if (!currentGradingSession) {
+          showAlert("Session not found", "danger");
+          return;
+        }
+
+        populateGradeForm();
+        new bootstrap.Modal(
+          document.getElementById("gradeSessionModal")
+        ).show();
+      }
+
+      function showGradeModal() {
+        // Get current session ID from view modal
+        const sessionId = document
+          .getElementById("viewSessionModalTitle")
+          .textContent.match(/#(\d+)/)?.[1];
+        if (!sessionId) {
+          showAlert("Session ID not found", "danger");
+          return;
+        }
+
+        currentGradingSessionId = parseInt(sessionId);
+        currentGradingSession = labSessions.find(
+          (s) => s.id === currentGradingSessionId
+        );
+
+        if (!currentGradingSession) {
+          showAlert("Session not found", "danger");
+          return;
+        }
+
+        populateGradeForm();
+
+        // Hide view modal and show grade modal
+        bootstrap.Modal.getInstance(
+          document.getElementById("viewSessionModal")
+        ).hide();
+        new bootstrap.Modal(
+          document.getElementById("gradeSessionModal")
+        ).show();
+      }
+
+      function populateGradeForm() {
+        // Get the lab to find max score
+        const lab = labs.find((l) => l.id === currentGradingSession.lab_id);
+        const maxScore = lab ? lab.max_score : 100;
+
+        // Populate grade form
+        document.getElementById("grade-session-id").value =
+          currentGradingSessionId;
+        document.getElementById(
+          "grade-student-name"
+        ).textContent = `Student: ${currentGradingSession.user_name} (${currentGradingSession.user_email})`;
+        document.getElementById(
+          "grade-lab-name"
+        ).textContent = `Lab: ${currentGradingSession.lab_name} - ${currentGradingSession.course_name}`;
+        document.getElementById("grade-max-score").textContent = maxScore;
+        document.getElementById("grade-score").max = maxScore;
+        document.getElementById("grade-score").value =
+          currentGradingSession.score || "";
+        document.getElementById("grade-status").value =
+          currentGradingSession.status || "in_progress";
+        document.getElementById("grade-notes").value =
+          currentGradingSession.submission_notes || "";
+      }
+
+      async function saveGrade() {
+        const sessionId = parseInt(
+          document.getElementById("grade-session-id").value
+        );
+        const score = parseFloat(document.getElementById("grade-score").value);
+        const status = document.getElementById("grade-status").value;
+        const notes = document.getElementById("grade-notes").value.trim();
+        const maxScore = parseFloat(
+          document.getElementById("grade-max-score").textContent
+        );
+
+        // Validation
+        if (isNaN(score)) {
+          showAlert("Please enter a valid score", "warning");
+          return;
+        }
+
+        if (score < 0 || score > maxScore) {
+          showAlert(`Score must be between 0 and ${maxScore}`, "warning");
+          return;
+        }
+
+        try {
+          const response = await fetch(`/admin/lab_session/${sessionId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              score: score,
+              status: status,
+              submission_notes: notes,
+            }),
+          });
+
+          if (response.ok) {
+            showAlert("Grade saved successfully", "success");
+
+            // Close grade modal
+            bootstrap.Modal.getInstance(
+              document.getElementById("gradeSessionModal")
+            ).hide();
+
+            // Reload data to reflect the new score
+            await loadLabSessions();
+          } else {
+            const error = await response.json();
+            showAlert(error.error || "Failed to save grade", "danger");
+          }
+        } catch (error) {
+          console.error("Error saving grade:", error);
+          showAlert("Failed to save grade", "danger");
+        }
+      }
+
+      // ==================== PDF FILE UPLOAD ====================
+      let selectedPDFFile = null;
+
+      function handlePDFFileSelect(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        if (file.type !== "application/pdf") {
+          showAlert("Please select a PDF file", "danger");
+          event.target.value = "";
+          return;
+        }
+
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+          showAlert("File size must be less than 10MB", "danger");
+          event.target.value = "";
+          return;
+        }
+
+        selectedPDFFile = file;
+
+        // Show preview
+        document.getElementById("pdf-filename").textContent = file.name;
+        document.getElementById(
+          "pdf-filesize"
+        ).textContent = `(${formatFileSize(file.size)})`;
+        document.getElementById("pdf-preview").style.display = "block";
+        document.getElementById("clear-pdf-btn").style.display = "block";
+
+        // Set placeholder path
+        document.getElementById(
+          "lab-pdf-instruction"
+        ).value = `/static/pdfs/${file.name}`;
+      }
+
+      function clearPDFFile() {
+        selectedPDFFile = null;
+        document.getElementById("pdf-file-input").value = "";
+        document.getElementById("lab-pdf-instruction").value = "";
+        document.getElementById("pdf-preview").style.display = "none";
+        document.getElementById("clear-pdf-btn").style.display = "none";
+      }
+
+      function formatFileSize(bytes) {
+        if (bytes === 0) return "0 Bytes";
+        const k = 1024;
+        const sizes = ["Bytes", "KB", "MB"];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return (
+          Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i]
+        );
+      }
+
+      async function uploadPDFFile(labId) {
+        if (!selectedPDFFile) return null;
+
+        const formData = new FormData();
+        formData.append("pdf", selectedPDFFile);
+        formData.append("lab_id", labId);
+
+        try {
+          const response = await fetch("/api/upload-lab-pdf", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to upload PDF");
+          }
+
+          const result = await response.json();
+          return result.pdf_url;
+        } catch (error) {
+          console.error("Error uploading PDF:", error);
+          showAlert("Failed to upload PDF file", "danger");
+          return null;
+        }
+      }
+
+      // ==================== UTILITY FUNCTIONS ====================
+      function showAlert(message, type) {
+        const alertDiv = document.createElement("div");
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
+        alertDiv.style.zIndex = "9999";
+        alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+        document.body.appendChild(alertDiv);
+
+        setTimeout(() => {
+          alertDiv.remove();
+        }, 3000);
+      }
+    </script>
+  </body>
+</html>
