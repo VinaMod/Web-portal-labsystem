@@ -1958,7 +1958,7 @@ def execute_run_command(user_linux_name, run_command, working_directory):
     """Execute run command when lab starts"""
     try:
         # Dùng newgrp -c "<command>" để chạy command với group mới
-        full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo {run_command}"'
+        full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo docker compose down && sudo {run_command}"'
 
         result = subprocess.run(
             full_command,
@@ -2400,6 +2400,7 @@ def handle_start_terminal(data):
                     # # Execute bash as the student user
                     # os.execvp('sudo', ['sudo', '-u', linux_username, '/bin/bash'])
                     # child process, vẫn ở folder Python hiện tại
+                    
                     os.execvp('sudo', [
                         'sudo',
                         '-u', linux_username,
