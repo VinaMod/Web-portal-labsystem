@@ -10,16 +10,51 @@ import json
 import shutil
 import uuid
 import re
-import ipaddress
 from pathlib import Path
 from functools import wraps
+import asyncio
+import aiohttp
+import platform
+from concurrent.futures import ThreadPoolExecutor
+import pymysql
+import traceback
+import signal
+from dotenv import load_dotenv
+import getpass
+
+load_dotenv()  # tự động tìm file .env trong cwd
+
+# Unix/Linux-only imports (not available on Windows)
+if platform.system() != 'Windows':
+    import pty
+    import select
+    import struct
+    import fcntl
+    import termios
+else:
+    # Windows fallback - these will not be used
+    pty = None
+    select = None
+    struct = None
+    fcntl = None
+    termios = None
+
+# Install PyMySQL as MySQLdb (for compatibility)
+pymysql.install_as_MySQLdb()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///lab_management.db')
+print("DATABASE URL: ", os.getenv('DATABASE_URL'))
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'mysql+pymysql://root:@localhost:3306/lab_management')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_size': 10,
+    'pool_recycle': 3600,
+    'pool_pre_ping': True,
+}
 
 # Google OAuth Config
+print("Google client id: ", os.getenv('GOOGLE_CLIENT_ID'))
 app.config['GOOGLE_CLIENT_ID'] = os.getenv('GOOGLE_CLIENT_ID')
 app.config['GOOGLE_CLIENT_SECRET'] = os.getenv('GOOGLE_CLIENT_SECRET')
 
@@ -29,13 +64,27 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 oauth = OAuth(app)
 
 # Lab Environment Config
-LAB_TEMPLATES_PATH = os.getenv('LAB_TEMPLATES_PATH', './lab-templates')
-STUDENT_LABS_PATH = os.getenv('STUDENT_LABS_PATH', './student-labs')
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+LAB_TEMPLATES_PATH = os.getenv('LAB_TEMPLATES_PATH', os.path.join(BASE_DIR, 'lab-templates'))
+STUDENT_LABS_PATH = os.getenv('STUDENT_LABS_PATH', os.path.join(BASE_DIR, 'student-labs'))
 ALLOWED_COMMANDS = json.loads(os.getenv('ALLOWED_COMMANDS', '["ls", "dir", "cd", "cat", "type", "grep", "find", "findstr", "pwd", "echo", "whoami", "python", "python3", "gcc", "make", "javac", "java", "node", "npm", "git"]'))
+
+# PDF Upload Config
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'pdfs')
+ALLOWED_EXTENSIONS = {'pdf'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max file size
 
 # Ensure directories exist
 os.makedirs(LAB_TEMPLATES_PATH, exist_ok=True)
 os.makedirs(STUDENT_LABS_PATH, exist_ok=True)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Log paths for debugging
+print(f"Lab Templates Path: {LAB_TEMPLATES_PATH}")
+print(f"Student Labs Path: {STUDENT_LABS_PATH}")
+print(f"Templates exist: {os.path.exists(LAB_TEMPLATES_PATH)}")
+print(f"Student labs exist: {os.path.exists(STUDENT_LABS_PATH)}")
 
 # Google OAuth Setup
 google = oauth.register(
@@ -96,19 +145,69 @@ class Lab(db.Model):
     order_index = db.Column(db.Integer, default=0)
     deadline = db.Column(db.DateTime)
     max_score = db.Column(db.Integer, default=100)
+    minimum_score = db.Column(db.Integer, default=0)  # Minimum score to pass the lab
     estimated_duration = db.Column(db.Integer)  # minutes
     difficulty = db.Column(db.String(20), default='medium')
     is_active = db.Column(db.Boolean, default=True)
+    run_commands = db.Column(db.Text)  # JSON array of commands to run when lab starts
+    num_checkpoints = db.Column(db.Integer, default=0)  # Number of checkpoints for submission
+    checkpoint_rules = db.Column(db.Text)  # JSON: rules for decoding/validating checkpoints
+    pdf_instruction_url = db.Column(db.String(500))  # URL or path to PDF instruction file
+    output_result = db.Column(db.Text)  # Expected output result to display after running commands
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships
     lab_sessions = db.relationship('LabSession', backref='lab', lazy=True, cascade='all, delete-orphan')
+    lab_parameters = db.relationship('LabParameter', backref='lab', lazy=True, cascade='all, delete-orphan')
     
     @property
     def accessible_resources_list(self):
         """Return accessible resources as a list"""
         if self.accessible_resources:
             return json.loads(self.accessible_resources)
+        return []
+    
+    @property
+    def run_commands_list(self):
+        """Return run commands as a list"""
+        print("Self run commands: ", self.run_commands)
+        if not self.run_commands:
+            return []
+
+        try:
+            # Nếu self.run_commands là JSON list, load bình thường
+            commands = json.loads(self.run_commands)
+            if isinstance(commands, list):
+                return commands
+            # Nếu JSON là string, bọc thành list
+            return [commands]
+        except json.JSONDecodeError:
+            # Nếu không phải JSON, coi như là string bình thường
+            return [self.run_commands]
+    
+    @property
+    def checkpoint_rules_dict(self):
+        """Return checkpoint rules as a dictionary"""
+        if self.checkpoint_rules:
+            return json.loads(self.checkpoint_rules)
+        return {}
+
+class LabParameter(db.Model):
+    __tablename__ = 'lab_parameters'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    lab_id = db.Column(db.Integer, db.ForeignKey('labs.id'), nullable=False)
+    parameter_name = db.Column(db.String(100), nullable=False)  # e.g., ${fieldName}
+    parameter_values = db.Column(db.Text, nullable=False)  # JSON array of possible values
+    file_path = db.Column(db.String(500))  # Optional: path to file that should be modified
+    description = db.Column(db.Text)  # Optional description
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    @property
+    def values_list(self):
+        """Return parameter values as a list"""
+        if self.parameter_values:
+            return json.loads(self.parameter_values)
         return []
 
 class Enrollment(db.Model):
@@ -135,6 +234,9 @@ class LabSession(db.Model):
     last_accessed = db.Column(db.DateTime)
     score = db.Column(db.Integer)
     submission_notes = db.Column(db.Text)
+    checkpoint_answers = db.Column(db.Text)  # JSON: student's checkpoint answers
+    checkpoint_results = db.Column(db.Text)  # JSON: validation results for each checkpoint
+    generated_flag = db.Column(db.String(255))  # Auto-generated flag for this lab session
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     __table_args__ = (db.UniqueConstraint('user_id', 'lab_id'),)
@@ -169,21 +271,6 @@ class CommandLog(db.Model):
     is_allowed = db.Column(db.Boolean)
     blocked_reason = db.Column(db.Text)
     executed_at = db.Column(db.DateTime, default=datetime.utcnow)
-class LabsNetwork(db.Model):
-    __tablename__ = 'labs_network'
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), nullable=False)           # Tên mạng
-    subnet_ip_base = db.Column(db.String(15), nullable=False) # Base IP cho container
-    mask = db.Column(db.String(18), nullable=False)           # Subnet mask
-    gateway = db.Column(db.String(15), nullable=False)        # Gateway
-    used = db.Column(db.Boolean, default=False)               # Đã dùng hay chưa
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow,
-                           onupdate=datetime.utcnow)
-
-    def __repr__(self):
-        return f"<LabsNetwork {self.name} ({self.subnet_ip_base})>"    
 
 # Helper Functions
 def login_required(f):
@@ -194,10 +281,119 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user' not in session:
+            return redirect(url_for('login'))
+        if session['user']['role'] != 'admin':
+            flash('Access denied. Admin privileges required.', 'error')
+            return redirect(url_for('dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 def is_edu_email(email):
     """Check if email is from an educational institution"""
     pattern = os.getenv('ALLOWED_EMAIL_REGEX', r'^.+@.+\.edu(\..+)?$')
     return bool(re.match(pattern, email, re.IGNORECASE))
+
+# Async HTTP helpers using aiohttp
+async def fetch_url_async(url, method='GET', headers=None, data=None, timeout=30):
+    """
+    Async function to fetch URL using aiohttp
+    
+    Args:
+        url: URL to fetch
+        method: HTTP method (GET, POST, etc.)
+        headers: Optional headers dict
+        data: Optional data for POST requests
+        timeout: Request timeout in seconds
+    
+    Returns:
+        dict with status, headers, and content
+    """
+    async with aiohttp.ClientSession() as session:
+        try:
+            timeout_obj = aiohttp.ClientTimeout(total=timeout)
+            async with session.request(
+                method=method,
+                url=url,
+                headers=headers,
+                json=data,
+                timeout=timeout_obj
+            ) as response:
+                content = await response.text()
+                return {
+                    'status': response.status,
+                    'headers': dict(response.headers),
+                    'content': content,
+                    'success': response.status < 400
+                }
+        except asyncio.TimeoutError:
+            return {
+                'status': 408,
+                'error': 'Request timeout',
+                'success': False
+            }
+        except Exception as e:
+            return {
+                'status': 500,
+                'error': str(e),
+                'success': False
+            }
+
+async def fetch_multiple_urls_async(urls):
+    """
+    Fetch multiple URLs concurrently using aiohttp
+    
+    Args:
+        urls: List of URLs to fetch
+    
+    Returns:
+        List of response dicts
+    """
+    tasks = [fetch_url_async(url) for url in urls]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    return results
+
+def run_async(coro):
+    """
+    Helper to run async function in sync context
+    """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+async def check_lab_resource_availability(resource_urls):
+    """
+    Check if lab resources (external APIs, services) are available
+    
+    Args:
+        resource_urls: List of resource URLs to check
+    
+    Returns:
+        dict with availability status for each resource
+    """
+    results = {}
+    async with aiohttp.ClientSession() as session:
+        for url in resource_urls:
+            try:
+                timeout = aiohttp.ClientTimeout(total=5)
+                async with session.get(url, timeout=timeout) as response:
+                    results[url] = {
+                        'available': response.status < 500,
+                        'status': response.status,
+                        'response_time': response.headers.get('X-Response-Time', 'N/A')
+                    }
+            except Exception as e:
+                results[url] = {
+                    'available': False,
+                    'error': str(e)
+                }
+    return results
 
 def validate_command_access(command, accessible_resources, current_dir):
     """
@@ -205,8 +401,6 @@ def validate_command_access(command, accessible_resources, current_dir):
     Returns (is_allowed, reason)
     """
     import shlex
-    if not accessible_resources:
-        return True, "No limit"
     
     # Split command into parts, handling quotes properly
     try:
@@ -221,8 +415,8 @@ def validate_command_access(command, accessible_resources, current_dir):
     cmd = parts[0]
     
     # Check if command is in allowed list
-    if cmd not in ALLOWED_COMMANDS:
-        return False, f"Command '{cmd}' is not allowed"
+    # if cmd not in ALLOWED_COMMANDS:
+    #     return False, f"Command '{cmd}' is not allowed"
     
     # Check for dangerous patterns
     dangerous_patterns = [
@@ -240,40 +434,40 @@ def validate_command_access(command, accessible_resources, current_dir):
             return False, f"Command contains dangerous pattern: {pattern}"
     
     # Validate file/directory access for commands that take paths
-    if cmd in ['cd', 'cat', 'grep', 'find', 'type'] and len(parts) > 1:
-        # Check all path arguments (skip flags starting with -)
-        for arg in parts[1:]:
-            if arg.startswith('-'):
-                continue
+    # if cmd in ['cd', 'cat', 'grep', 'find', 'type'] and len(parts) > 1:
+    #     # Check all path arguments (skip flags starting with -)
+    #     for arg in parts[1:]:
+    #         if arg.startswith('-'):
+    #             continue
                 
-            target_path = arg
+    #         target_path = arg
             
-            # Remove quotes if present
-            target_path = target_path.strip('"').strip("'")
+    #         # Remove quotes if present
+    #         target_path = target_path.strip('"').strip("'")
             
-            # Skip if it's a flag or option
-            if target_path.startswith('-'):
-                continue
+    #         # Skip if it's a flag or option
+    #         if target_path.startswith('-'):
+    #             continue
             
-            # Convert relative path to absolute
-            if not os.path.isabs(target_path):
-                target_path = os.path.join(current_dir, target_path)
+    #         # Convert relative path to absolute
+    #         if not os.path.isabs(target_path):
+    #             target_path = os.path.join(current_dir, target_path)
             
-            # Normalize path to prevent traversal
-            target_path = os.path.normpath(target_path)
+    #         # Normalize path to prevent traversal
+    #         target_path = os.path.normpath(target_path)
             
-            # Check if path is within accessible resources
-            is_accessible = False
-            for resource in accessible_resources:
-                resource_abs = os.path.join(current_dir, resource) if not os.path.isabs(resource) else resource
-                resource_abs = os.path.normpath(resource_abs)
+    #         # Check if path is within accessible resources
+    #         is_accessible = False
+    #         for resource in accessible_resources:
+    #             resource_abs = os.path.join(current_dir, resource) if not os.path.isabs(resource) else resource
+    #             resource_abs = os.path.normpath(resource_abs)
                 
-                if target_path.startswith(resource_abs):
-                    is_accessible = True
-                    break
+    #             if target_path.startswith(resource_abs):
+    #                 is_accessible = True
+    #                 break
             
-            if not is_accessible:
-                return False, f"Access denied to path: {target_path}"
+    #         if not is_accessible:
+    #             return False, f"Access denied to path: {target_path}"
     
     return True, "Command allowed"
 
@@ -298,9 +492,9 @@ def auth_callback():
         email = user_info['email']
         
         # # Validate .edu email
-        if not is_edu_email(email):
-            flash('Only .edu email addresses are allowed to access this system.', 'error')
-            return redirect(url_for('index'))
+        # if not is_edu_email(email):
+        #     flash('Only .edu email addresses are allowed to access this system.', 'error')
+        #     return redirect(url_for('index'))
         
         # Find or create user
         user = User.query.filter_by(email=email).first()
@@ -340,6 +534,71 @@ def logout():
     session.pop('user', None)
     flash('You have been logged out successfully.', 'success')
     return redirect(url_for('index'))
+
+@app.route('/profile')
+@login_required
+def profile():
+    """User profile page"""
+    user_id = session['user']['id']
+    user = User.query.get_or_404(user_id)
+    
+    # Get user statistics
+    total_enrollments = Enrollment.query.filter_by(user_id=user_id).count()
+    completed_labs = LabSession.query.filter_by(user_id=user_id, status='completed').count()
+    in_progress_labs = LabSession.query.filter_by(user_id=user_id, status='in_progress').count()
+    
+    # Get average score
+    completed_sessions = LabSession.query.filter_by(user_id=user_id, status='completed').all()
+    avg_score = sum(s.score for s in completed_sessions if s.score) / len(completed_sessions) if completed_sessions else 0
+    
+    # Get recent lab sessions
+    recent_sessions = db.session.query(LabSession, Lab).join(Lab).filter(
+        LabSession.user_id == user_id
+    ).order_by(LabSession.started_at.desc()).limit(10).all()
+    
+    return render_template('profile.html', 
+                         user=user,
+                         total_enrollments=total_enrollments,
+                         completed_labs=completed_labs,
+                         in_progress_labs=in_progress_labs,
+                         avg_score=round(avg_score, 1),
+                         recent_sessions=recent_sessions)
+
+@app.route('/settings')
+@login_required
+def settings():
+    """User settings page"""
+    user_id = session['user']['id']
+    user = User.query.get_or_404(user_id)
+    return render_template('settings.html', user=user)
+
+@app.route('/settings/update', methods=['POST'])
+@login_required
+def update_settings():
+    """Update user settings"""
+    user_id = session['user']['id']
+    user = User.query.get_or_404(user_id)
+    
+    data = request.json
+    
+    try:
+        if 'full_name' in data:
+            user.full_name = data['full_name']
+            session['user']['full_name'] = data['full_name']
+        
+        if 'email' in data and data['email'] != user.email:
+            # Check if email already exists
+            existing_user = User.query.filter_by(email=data['email']).first()
+            if existing_user and existing_user.id != user_id:
+                return jsonify({'error': 'Email already in use'}), 400
+            user.email = data['email']
+            session['user']['email'] = data['email']
+        
+        db.session.commit()
+        return jsonify({'message': 'Settings updated successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/dashboard')
 @login_required
@@ -461,224 +720,971 @@ def enroll_course():
         db.session.rollback()
         return jsonify({'error': 'Failed to enroll in course'}), 500
 
-# def clone_lab_folder(user_id, lab_id):
+@app.route('/api/check_resources', methods=['POST'])
+@login_required
+def check_resources():
+    """Check availability of external resources using aiohttp"""
+    resource_urls = request.json.get('urls', [])
+    
+    if not resource_urls:
+        return jsonify({'error': 'No URLs provided'}), 400
+    
+    # Run async function in sync context
+    results = run_async(check_lab_resource_availability(resource_urls))
+    
+    return jsonify({
+        'resources': results,
+        'checked_at': datetime.utcnow().isoformat()
+    })
+
+@app.route('/api/fetch_url', methods=['POST'])
+@login_required
+def fetch_url():
+    """Fetch a URL using aiohttp (for lab exercises)"""
+    data = request.json
+    url = data.get('url')
+    method = data.get('method', 'GET')
+    headers = data.get('headers')
+    payload = data.get('data')
+    
+    if not url:
+        return jsonify({'error': 'URL is required'}), 400
+    
+    # Run async fetch
+    result = run_async(fetch_url_async(url, method, headers, payload))
+    
+    return jsonify(result)
+
+@app.route('/api/fetch_multiple', methods=['POST'])
+@login_required
+def fetch_multiple():
+    """Fetch multiple URLs concurrently using aiohttp"""
+    urls = request.json.get('urls', [])
+    
+    if not urls:
+        return jsonify({'error': 'No URLs provided'}), 400
+    
+    if len(urls) > 10:
+        return jsonify({'error': 'Maximum 10 URLs allowed'}), 400
+    
+    # Run async fetch for multiple URLs
+    results = run_async(fetch_multiple_urls_async(urls))
+    
+    return jsonify({
+        'results': results,
+        'count': len(results)
+    })
+
+@app.route('/api/check_lab_template/<int:lab_id>')
+@login_required
+def check_lab_template(lab_id):
+    """Check if lab template exists"""
+    lab = db.session.get(Lab, lab_id)
+    if not lab:
+        return jsonify({'error': 'Lab not found', 'exists': False}), 404
+    
+    template_path = os.path.join(LAB_TEMPLATES_PATH, lab.template_folder)
+    exists = os.path.exists(template_path)
+    
+    # List available templates
+    available_templates = []
+    if os.path.exists(LAB_TEMPLATES_PATH):
+        available_templates = [d for d in os.listdir(LAB_TEMPLATES_PATH) 
+                             if os.path.isdir(os.path.join(LAB_TEMPLATES_PATH, d))]
+    
+    return jsonify({
+        'lab_id': lab_id,
+        'lab_name': lab.name,
+        'template_folder': lab.template_folder,
+        'template_path': template_path,
+        'exists': exists,
+        'available_templates': available_templates,
+        'LAB_TEMPLATES_PATH': LAB_TEMPLATES_PATH
+    })
+
+# Admin Routes
+@app.route('/admin')
+@admin_required
+def admin_dashboard():
+    """Admin dashboard"""
+    users = User.query.all()
+    courses = Course.query.all()
+    labs = Lab.query.all()
+    enrollments = Enrollment.query.all()
+    lab_sessions = LabSession.query.all()
+    
+    stats = {
+        'total_users': len(users),
+        'total_courses': len(courses),
+        'total_labs': len(labs),
+        'total_enrollments': len(enrollments),
+        'total_lab_sessions': len(lab_sessions),
+        'active_users': User.query.filter_by(is_active=True).count(),
+        'active_courses': Course.query.filter_by(is_active=True).count(),
+    }
+    
+    return render_template('admin.html', 
+                         users=users, 
+                         courses=courses, 
+                         labs=labs,
+                         enrollments=enrollments,
+                         stats=stats)
+
+# User Management
+@app.route('/admin/users')
+@admin_required
+def admin_users():
+    """Get all users"""
+    users = User.query.order_by(User.created_at.desc()).all()
+    return jsonify([{
+        'id': u.id,
+        'email': u.email,
+        'full_name': u.full_name,
+        'role': u.role,
+        'is_active': u.is_active,
+        'created_at': u.created_at.isoformat() if u.created_at else None,
+        'last_login': u.last_login.isoformat() if u.last_login else None
+    } for u in users])
+
+@app.route('/admin/user/<int:user_id>', methods=['PUT'])
+@admin_required
+def update_user(user_id):
+    """Update user"""
+    user = User.query.get_or_404(user_id)
+    data = request.json
+    
+    if 'role' in data:
+        user.role = data['role']
+    if 'is_active' in data:
+        user.is_active = data['is_active']
+    
+    try:
+        db.session.commit()
+        return jsonify({'message': 'User updated successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/user/<int:user_id>', methods=['DELETE'])
+@admin_required
+def delete_user(user_id):
+    """Delete user and corresponding Linux user"""
+    user = User.query.get_or_404(user_id)
+    
+    # Don't allow deleting yourself
+    if user.id == session['user']['id']:
+        return jsonify({'error': 'Cannot delete your own account'}), 400
+    
+    try:
+        user_email = user.email
+        
+        # Delete from database first
+        db.session.delete(user)
+        db.session.commit()
+        
+        # Delete Linux user if on Linux system
+        if platform.system() != 'Windows':
+            linux_username = get_student_username(user_email)
+            success, message = delete_linux_user(linux_username, remove_home=True)
+            
+            if success:
+                print(f"✅ Deleted user {user_email} and Linux user {linux_username}")
+                return jsonify({
+                    'message': 'User and Linux user deleted successfully',
+                    'linux_user_deleted': True,
+                    'linux_username': linux_username
+                })
+            else:
+                print(f"⚠️ User {user_email} deleted but Linux user deletion failed: {message}")
+                return jsonify({
+                    'message': 'User deleted but Linux user deletion failed',
+                    'warning': message,
+                    'linux_user_deleted': False
+                })
+        else:
+            return jsonify({
+                'message': 'User deleted successfully',
+                'linux_user_deleted': False,
+                'note': 'Not running on Linux system'
+            })
+            
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# Course Management
+@app.route('/admin/courses')
+@admin_required
+def admin_courses():
+    """Get all courses"""
+    courses = Course.query.order_by(Course.created_at.desc()).all()
+    return jsonify([{
+        'id': c.id,
+        'code': c.code,
+        'name': c.name,
+        'description': c.description,
+        'semester': c.semester,
+        'is_active': c.is_active,
+        'max_students': c.max_students,
+        'lab_count': len(c.labs),
+        'enrollment_count': len(c.enrollments),
+        'created_at': c.created_at.isoformat() if c.created_at else None
+    } for c in courses])
+
+@app.route('/admin/course', methods=['POST'])
+@admin_required
+def create_course():
+    """Create new course"""
+    data = request.json
+    
+    course = Course(
+        code=data['code'],
+        name=data['name'],
+        description=data.get('description', ''),
+        semester=data.get('semester', ''),
+        max_students=data.get('max_students', 50),
+        instructor_id=session['user']['id']
+    )
+    
+    try:
+        db.session.add(course)
+        db.session.commit()
+        return jsonify({'message': 'Course created successfully', 'id': course.id})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/course/<int:course_id>', methods=['PUT'])
+@admin_required
+def update_course(course_id):
+    """Update course"""
+    course = Course.query.get_or_404(course_id)
+    data = request.json
+    
+    if 'code' in data:
+        course.code = data['code']
+    if 'name' in data:
+        course.name = data['name']
+    if 'description' in data:
+        course.description = data['description']
+    if 'semester' in data:
+        course.semester = data['semester']
+    if 'is_active' in data:
+        course.is_active = data['is_active']
+    if 'max_students' in data:
+        course.max_students = data['max_students']
+    
+    try:
+        db.session.commit()
+        return jsonify({'message': 'Course updated successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/course/<int:course_id>', methods=['DELETE'])
+@admin_required
+def delete_course(course_id):
+    """Delete course"""
+    course = Course.query.get_or_404(course_id)
+    
+    try:
+        db.session.delete(course)
+        db.session.commit()
+        return jsonify({'message': 'Course deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# PDF Upload Helper Functions
+def allowed_file(filename):
+    """Check if file extension is allowed"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def secure_filename_custom(filename):
+    """Create a secure filename"""
+    # Remove any path components
+    filename = os.path.basename(filename)
+    # Replace spaces with underscores
+    filename = filename.replace(' ', '_')
+    # Remove any characters that aren't alphanumeric, underscore, hyphen, or dot
+    filename = re.sub(r'[^\w\-.]', '', filename)
+    return filename
+
+@app.route('/api/upload-lab-pdf', methods=['POST'])
+@admin_required
+def upload_lab_pdf():
+    """Upload PDF file for lab instructions"""
+    try:
+        if 'pdf' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['pdf']
+        lab_id = request.form.get('lab_id')
+        
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        if not allowed_file(file.filename):
+            return jsonify({'error': 'Only PDF files are allowed'}), 400
+        
+        # Create secure filename with lab_id prefix
+        original_filename = secure_filename_custom(file.filename)
+        filename = f"lab_{lab_id}_{original_filename}" if lab_id else f"lab_{original_filename}"
+        
+        # Save file
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        # Return URL path
+        pdf_url = f"/static/pdfs/{filename}"
+        return jsonify({
+            'message': 'PDF uploaded successfully',
+            'pdf_url': pdf_url,
+            'filename': filename
+        })
+    
+    except Exception as e:
+        print(f"Error uploading PDF: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Lab Management
+@app.route('/admin/labs')
+@admin_required
+def admin_labs():
+    """Get all labs"""
+    labs = Lab.query.order_by(Lab.course_id, Lab.order_index).all()
+    return jsonify([{
+        'id': l.id,
+        'name': l.name,
+        'course_id': l.course_id,
+        'course_name': l.course.name,
+        'description': l.description,
+        'template_folder': l.template_folder,
+        'accessible_resources': l.accessible_resources,
+        'build_command': l.build_command,
+        'run_commands': l.run_commands,
+        'num_checkpoints': l.num_checkpoints,
+        'checkpoint_rules': l.checkpoint_rules,
+        'pdf_instruction_url': l.pdf_instruction_url,
+        'output_result': l.output_result,
+        'difficulty': l.difficulty,
+        'is_active': l.is_active,
+        'order_index': l.order_index,
+        'max_score': l.max_score,
+        'minimum_score': l.minimum_score,
+        'estimated_duration': l.estimated_duration,
+        'deadline': l.deadline.isoformat() if l.deadline else None,
+        'created_at': l.created_at.isoformat() if l.created_at else None,
+        'parameters': [{
+            'id': p.id,
+            'parameter_name': p.parameter_name,
+            'parameter_values': p.parameter_values,
+            'file_path': p.file_path,
+            'description': p.description
+        } for p in l.lab_parameters]
+    } for l in labs])
+
+@app.route('/admin/lab', methods=['POST'])
+@admin_required
+def create_lab():
+    """Create new lab"""
+    data = request.json
+    
+    lab = Lab(
+        course_id=data['course_id'],
+        name=data['name'],
+        description=data.get('description', ''),
+        template_folder=data['template_folder'],
+        accessible_resources=json.dumps(data.get('accessible_resources', [])),
+        build_command=data.get('build_command', ''),
+        run_commands=json.dumps(data.get('run_commands', [])),
+        num_checkpoints=data.get('num_checkpoints', 0),
+        checkpoint_rules=json.dumps(data.get('checkpoint_rules', {})),
+        pdf_instruction_url=data.get('pdf_instruction_url'),
+        output_result=data.get('output_result'),
+        order_index=data.get('order_index', 0),
+        difficulty=data.get('difficulty', 'medium'),
+        max_score=data.get('max_score', 100),
+        minimum_score=data.get('minimum_score', 0),
+        estimated_duration=data.get('estimated_duration', 60)
+    )
+    
+    if 'deadline' in data and data['deadline']:
+        lab.deadline = datetime.fromisoformat(data['deadline'])
+    
+    try:
+        db.session.add(lab)
+        db.session.commit()
+        
+        # Create parameters if provided
+        if 'parameters' in data and data['parameters']:
+            for param_data in data['parameters']:
+                param = LabParameter(
+                    lab_id=lab.id,
+                    parameter_name=param_data['parameter_name'],
+                    parameter_values=json.dumps(param_data.get('parameter_values', [])),
+                    file_path=param_data.get('file_path'),
+                    description=param_data.get('description', '')
+                )
+                db.session.add(param)
+            db.session.commit()
+        
+        return jsonify({'message': 'Lab created successfully', 'id': lab.id})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/lab/<int:lab_id>', methods=['PUT'])
+@admin_required
+def update_lab(lab_id):
+    """Update lab"""
+    lab = Lab.query.get_or_404(lab_id)
+    data = request.json
+    
+    if 'name' in data:
+        lab.name = data['name']
+    if 'description' in data:
+        lab.description = data['description']
+    if 'template_folder' in data:
+        lab.template_folder = data['template_folder']
+    if 'accessible_resources' in data:
+        lab.accessible_resources = json.dumps(data['accessible_resources'])
+    if 'build_command' in data:
+        lab.build_command = data['build_command']
+    if 'run_commands' in data:
+        lab.run_commands = json.dumps(data['run_commands'])
+    if 'num_checkpoints' in data:
+        lab.num_checkpoints = data['num_checkpoints']
+    if 'checkpoint_rules' in data:
+        lab.checkpoint_rules = json.dumps(data['checkpoint_rules'])
+    if 'pdf_instruction_url' in data:
+        lab.pdf_instruction_url = data['pdf_instruction_url']
+    if 'output_result' in data:
+        lab.output_result = data['output_result']
+    if 'order_index' in data:
+        lab.order_index = data['order_index']
+    if 'difficulty' in data:
+        lab.difficulty = data['difficulty']
+    if 'max_score' in data:
+        lab.max_score = data['max_score']
+    if 'minimum_score' in data:
+        lab.minimum_score = data['minimum_score']
+    if 'estimated_duration' in data:
+        lab.estimated_duration = data['estimated_duration']
+    if 'is_active' in data:
+        lab.is_active = data['is_active']
+    if 'deadline' in data:
+        lab.deadline = datetime.fromisoformat(data['deadline']) if data['deadline'] else None
+    
+    # Update parameters if provided
+    if 'parameters' in data:
+        # Delete old parameters
+        LabParameter.query.filter_by(lab_id=lab_id).delete()
+        
+        # Create new parameters
+        for param_data in data['parameters']:
+            param = LabParameter(
+                lab_id=lab_id,
+                parameter_name=param_data['parameter_name'],
+                parameter_values=json.dumps(param_data.get('parameter_values', [])),
+                file_path=param_data.get('file_path'),
+                description=param_data.get('description', '')
+            )
+            db.session.add(param)
+    
+    try:
+        db.session.commit()
+        return jsonify({'message': 'Lab updated successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/lab/<int:lab_id>', methods=['DELETE'])
+@admin_required
+def delete_lab(lab_id):
+    """Delete lab"""
+    lab = Lab.query.get_or_404(lab_id)
+    
+    try:
+        db.session.delete(lab)
+        db.session.commit()
+        return jsonify({'message': 'Lab deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# Lab Parameters Management
+@app.route('/admin/lab/<int:lab_id>/parameters')
+@admin_required
+def get_lab_parameters(lab_id):
+    """Get all parameters for a lab"""
+    lab = Lab.query.get_or_404(lab_id)
+    return jsonify([{
+        'id': p.id,
+        'parameter_name': p.parameter_name,
+        'parameter_values': p.parameter_values,
+        'values_list': p.values_list,
+        'file_path': p.file_path,
+        'description': p.description,
+        'created_at': p.created_at.isoformat() if p.created_at else None
+    } for p in lab.lab_parameters])
+
+@app.route('/admin/lab/<int:lab_id>/parameter', methods=['POST'])
+@admin_required
+def create_lab_parameter(lab_id):
+    """Create new lab parameter"""
+    lab = Lab.query.get_or_404(lab_id)
+    data = request.json
+    
+    param = LabParameter(
+        lab_id=lab_id,
+        parameter_name=data['parameter_name'],
+        parameter_values=json.dumps(data.get('parameter_values', [])),
+        file_path=data.get('file_path', None),
+        description=data.get('description', '')
+    )
+    
+    try:
+        db.session.add(param)
+        db.session.commit()
+        return jsonify({'message': 'Parameter created successfully', 'id': param.id})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/lab_parameter/<int:param_id>', methods=['PUT'])
+@admin_required
+def update_lab_parameter(param_id):
+    """Update lab parameter"""
+    param = LabParameter.query.get_or_404(param_id)
+    data = request.json
+    
+    if 'parameter_name' in data:
+        param.parameter_name = data['parameter_name']
+    if 'parameter_values' in data:
+        param.parameter_values = json.dumps(data['parameter_values'])
+    if 'file_path' in data:
+        param.file_path = data['file_path']
+    if 'description' in data:
+        param.description = data['description']
+    
+    try:
+        db.session.commit()
+        return jsonify({'message': 'Parameter updated successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/lab_parameter/<int:param_id>', methods=['DELETE'])
+@admin_required
+def delete_lab_parameter(param_id):
+    """Delete lab parameter"""
+    param = LabParameter.query.get_or_404(param_id)
+    
+    try:
+        db.session.delete(param)
+        db.session.commit()
+        return jsonify({'message': 'Parameter deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# Enrollment Management
+@app.route('/admin/enrollments')
+@admin_required
+def admin_enrollments():
+    """Get all enrollments"""
+    enrollments = db.session.query(Enrollment, User, Course)\
+        .join(User, Enrollment.user_id == User.id)\
+        .join(Course, Enrollment.course_id == Course.id)\
+        .order_by(Enrollment.enrolled_at.desc()).all()
+    return jsonify([{
+        'id': e.id,
+        'user_id': e.user_id,
+        'user_name': u.full_name,
+        'user_email': u.email,
+        'course_id': e.course_id,
+        'course_name': c.name,
+        'course_code': c.code,
+        'status': e.status,
+        'enrolled_at': e.enrolled_at.isoformat() if e.enrolled_at else None
+    } for e, u, c in enrollments])
+
+@app.route('/admin/enrollment/<int:enrollment_id>', methods=['PUT'])
+@admin_required
+def update_enrollment(enrollment_id):
+    """Update enrollment status"""
+    enrollment = Enrollment.query.get_or_404(enrollment_id)
+    data = request.json
+    
+    if 'status' in data:
+        enrollment.status = data['status']
+    
+    try:
+        db.session.commit()
+        return jsonify({'message': 'Enrollment updated successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/enrollment/<int:enrollment_id>', methods=['DELETE'])
+@admin_required
+def delete_enrollment(enrollment_id):
+    """Delete enrollment"""
+    enrollment = Enrollment.query.get_or_404(enrollment_id)
+    
+    try:
+        db.session.delete(enrollment)
+        db.session.commit()
+        return jsonify({'message': 'Enrollment deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# Lab Session Management
+@app.route('/admin/lab_sessions')
+@admin_required
+def admin_lab_sessions():
+    """Get all lab sessions"""
+    sessions = db.session.query(LabSession, User, Lab, Course)\
+        .join(User, LabSession.user_id == User.id)\
+        .join(Lab, LabSession.lab_id == Lab.id)\
+        .join(Course, Lab.course_id == Course.id)\
+        .order_by(LabSession.created_at.desc()).all()
+    return jsonify([{
+        'id': ls.id,
+        'user_id': ls.user_id,
+        'user_name': u.full_name,
+        'user_email': u.email,
+        'lab_id': ls.lab_id,
+        'lab_name': l.name,
+        'course_name': c.name,
+        'course_code': c.code,
+        'status': ls.status,
+        'student_folder': ls.student_folder,
+        'score': ls.score,
+        'started_at': ls.started_at.isoformat() if ls.started_at else None,
+        'completed_at': ls.completed_at.isoformat() if ls.completed_at else None,
+        'last_accessed': ls.last_accessed.isoformat() if ls.last_accessed else None,
+        'created_at': ls.created_at.isoformat() if ls.created_at else None
+    } for ls, u, l, c in sessions])
+
+@app.route('/admin/lab_session', methods=['POST'])
+@admin_required
+def create_lab_session():
+    """Create new lab session"""
+    data = request.json
+    
+    user_id = data['user_id']
+    lab_id = data['lab_id']
+    
+    # Check if session already exists
+    existing = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
+    if existing:
+        return jsonify({'error': 'Lab session already exists for this user'}), 400
+    
+    # Clone lab folder
+    if not clone_lab_folder(user_id, lab_id):
+        return jsonify({'error': 'Failed to setup lab environment'}), 500
+    
+    # Get the newly created session
+    lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
+    
+    return jsonify({'message': 'Lab session created successfully', 'id': lab_session.id})
+
+@app.route('/admin/lab_session/<int:session_id>', methods=['PUT'])
+@admin_required
+def update_lab_session(session_id):
+    """Update lab session"""
+    lab_session = LabSession.query.get_or_404(session_id)
+    data = request.json
+    
+    if 'status' in data:
+        lab_session.status = data['status']
+    if 'score' in data:
+        lab_session.score = data['score']
+    if 'submission_notes' in data:
+        lab_session.submission_notes = data['submission_notes']
+    
+    try:
+        db.session.commit()
+        return jsonify({'message': 'Lab session updated successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/lab_session/<int:session_id>/commands')
+@admin_required
+def get_lab_session_commands(session_id):
+    """Get command logs for a lab session"""
+    lab_session = LabSession.query.get_or_404(session_id)
+    
+    # Get all terminal sessions for this lab session
+    terminal_sessions = TerminalSession.query.filter_by(lab_session_id=session_id).all()
+    
+    # Get all commands from all terminal sessions
+    commands = []
+    for ts in terminal_sessions:
+        session_commands = CommandLog.query.filter_by(
+            terminal_session_id=ts.id
+        ).order_by(CommandLog.executed_at.asc()).all()
+        commands.extend(session_commands)
+    
+    # Sort all commands by execution time
+    commands.sort(key=lambda x: x.executed_at)
+    
+    # Count statistics
+    total_commands = len(commands)
+    blocked_commands = sum(1 for cmd in commands if not cmd.is_allowed)
+    
+    return jsonify({
+        'commands': [{
+            'id': cmd.id,
+            'command': cmd.command,
+            'output': cmd.output,
+            'exit_code': cmd.exit_code,
+            'is_allowed': cmd.is_allowed,
+            'blocked_reason': cmd.blocked_reason,
+            'executed_at': cmd.executed_at.isoformat() if cmd.executed_at else None
+        } for cmd in commands],
+        'total_commands': total_commands,
+        'blocked_commands': blocked_commands
+    })
+
+@app.route('/admin/lab_session/<int:session_id>', methods=['DELETE'])
+@admin_required
+def delete_lab_session(session_id):
+    """Delete lab session"""
+    lab_session = LabSession.query.get_or_404(session_id)
+    
+    # Delete student folder if exists
+    if lab_session.student_folder and os.path.exists(lab_session.student_folder):
+        try:
+            shutil.rmtree(lab_session.student_folder)
+        except Exception as e:
+            print(f"Warning: Could not delete folder {lab_session.student_folder}: {e}")
+    
+    try:
+        db.session.delete(lab_session)
+        db.session.commit()
+        return jsonify({'message': 'Lab session deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# Linux User Management Functions
+def create_linux_user(username, home_dir=None):
+    """
+    Create a Linux user for student isolation
+    
+    Args:
+        username: Username to create (e.g., student_21020939)
+        home_dir: Home directory path (default: /home/{username})
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    try:
+        # Check if user already exists
+        try:
+            subprocess.run(['id', username], check=True, capture_output=True)
+            print(f"User {username} already exists")
+            return True, f"User {username} already exists"
+        except subprocess.CalledProcessError:
+            # User doesn't exist, create it
+            pass
+        
+        # Set home directory
+        if not home_dir:
+            home_dir = f"/home/{username}"
+        
+        # Create user with home directory
+        create_cmd = [
+            'sudo', 'useradd',
+            '-m',  # Create home directory
+            '-s', '/bin/bash',  # Set shell to bash
+            '-d', home_dir,  # Home directory
+            username
+        ]
+        
+        result = subprocess.run(create_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            error_msg = f"Failed to create user: {result.stderr}"
+            print(error_msg)
+            return False, error_msg
+        
+        # Set a default password (you should change this or use key-based auth)
+        password = f"{username}_password"  # Simple password for lab environment
+        passwd_cmd = ['sudo', 'chpasswd']
+        passwd_input = f"{username}:{password}\n"
+        
+        result = subprocess.run(passwd_cmd, input=passwd_input, capture_output=True, text=True)
+        if result.returncode != 0:
+            error_msg = f"Failed to set password: {result.stderr}"
+            print(error_msg)
+            return False, error_msg
+        
+        # Set appropriate permissions for home directory
+        subprocess.run(['sudo', 'chmod', '755', home_dir], check=True)
+        subprocess.run(['sudo', 'chown', f'{username}:{username}', home_dir], check=True)
+        
+        print(f"✅ Created Linux user: {username} with home: {home_dir}")
+        return True, f"User {username} created successfully"
+        
+    except Exception as e:
+        error_msg = f"Error creating Linux user {username}: {e}"
+        print(error_msg)
+        traceback.print_exc()
+        return False, error_msg
+
+def delete_linux_user(username, remove_home=True):
+    """
+    Delete a Linux user
+    
+    Args:
+        username: Username to delete
+        remove_home: Whether to remove home directory
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    try:
+        # Check if user exists
+        try:
+            subprocess.run(['id', username], check=True, capture_output=True)
+        except subprocess.CalledProcessError:
+            return True, f"User {username} does not exist"
+        
+        # Kill all processes owned by the user
+        subprocess.run(['sudo', 'pkill', '-u', username], capture_output=True)
+        
+        # Delete user
+        delete_cmd = ['sudo', 'userdel']
+        if remove_home:
+            delete_cmd.append('-r')  # Remove home directory
+        delete_cmd.append(username)
+        
+        result = subprocess.run(delete_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            error_msg = f"Failed to delete user: {result.stderr}"
+            print(error_msg)
+            return False, error_msg
+        
+        print(f"✅ Deleted Linux user: {username}")
+        return True, f"User {username} deleted successfully"
+        
+    except Exception as e:
+        error_msg = f"Error deleting Linux user {username}: {e}"
+        print(error_msg)
+        return False, error_msg
+
+def get_student_username(user_email):
+    """
+    Generate a safe Linux username from user email
+    
+    Args:
+        user_email: User's email address
+    
+    Returns:
+        str: Safe username (e.g., student_21020939)
+    """
+    # Extract username part from email (before @)
+    username_part = user_email.split('@')[0]
+    
+    # Remove special characters and make it lowercase
+    safe_username = re.sub(r'[^a-z0-9_]', '', username_part.lower())
+    
+    # Prefix with 'student_' to avoid conflicts
+    return f"student_{safe_username}"
+
+def clone_lab_folder(user_id, lab_id):
     """Clone lab template folder for a specific user"""
-    lab = Lab.query.get(lab_id)
-    user = User.query.get(user_id)
+    lab = db.session.get(Lab, lab_id)
+    user = db.session.get(User, user_id)
     
     if not lab or not user:
+        print(f"Error: Lab or User not found (lab_id={lab_id}, user_id={user_id})")
         return False
     
     try:
         template_path = os.path.join(LAB_TEMPLATES_PATH, lab.template_folder)
-        print("========= template path ", template_path);
+        
+        # Check if template exists
+        if not os.path.exists(template_path):
+            print(f"Error: Template folder not found: {template_path}") 
+        
+        # Step 1: Create Linux user for this student
+        linux_username = get_student_username(user.email)
+        success, message = create_linux_user(linux_username)
+        if not success:
+            print(f"Warning: Could not create Linux user: {message}")
+            # Continue anyway for development/testing
+        
         # Create unique folder name for student
         student_folder_name = f"{user.email.split('@')[0]}-{lab.template_folder}"
         student_folder_path = os.path.join(STUDENT_LABS_PATH, student_folder_name)
-        print("=========== student path ", student_folder_path)
-        # Clone the template folder
-        if os.path.exists(template_path) and not os.path.exists(student_folder_path):
+        
+        # Clone the template folder if it doesn't exist
+        if not os.path.exists(student_folder_path):
             shutil.copytree(template_path, student_folder_path)
+            print(f"Successfully cloned lab folder: {student_folder_path}")
             
-            # Create or update lab session
-            lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
-            if not lab_session:
-                lab_session = LabSession(
-                    user_id=user_id,
-                    lab_id=lab_id,
-                    student_folder=student_folder_path
-                )
-                db.session.add(lab_session)
-            else:
-                lab_session.student_folder = student_folder_path
-            
-            db.session.commit()
-            return True
-    except Exception as e:
-        print(f"Error cloning lab folder: {e}")
-        return False
-    
-    return False
-def clone_lab_folder(user_id, lab_id):
-    """Clone lab template folder for a specific user and update configs"""
-    print("============== ", lab_id, user_id)
-    lab = Lab.query.get(lab_id)
-    user = User.query.get(user_id)
-    if not lab or not user:
-        print("================ OUT")
-        return False
+            # Step 2: Set ownership to the Linux user (if on Linux/Unix)
+            if platform.system() != 'Windows':
+                try:
+                    print("CHOWN TO USER: ", linux_username)
+                    subprocess.run([
+                        'sudo', 'chown', '-R', 
+                        f'{linux_username}:{linux_username}', 
+                        student_folder_path
+                    ], check=True, capture_output=True)
+                    
+                    # Set appropriate permissions (read/write/execute for owner, read for group)
+                    subprocess.run([
+                        'sudo', 'chmod', '-R', '755', 
+                        student_folder_path
+                    ], check=True, capture_output=True)
+                    
+                    current_user = getpass.getuser()
+                    print("CURRENT USER: ", current_user)
+                    # 4️⃣ Thêm user hiện tại vào group linux_username
+                    subprocess.run([
+                        'sudo', 'usermod', '-aG', linux_username, current_user
+                    ], check=True, capture_output=True)
 
-    try:
-        template_path = os.path.join(LAB_TEMPLATES_PATH, lab.template_folder)
-        student_folder_name = f"{user.email.split('@')[0]}-{lab.template_folder}"
-        student_folder_path = os.path.join(STUDENT_LABS_PATH, student_folder_name)
-
-        # Clone template folder
-        if os.path.exists(template_path) and not os.path.exists(student_folder_path):
-            print("====================== ", template_path)
-            shutil.copytree(template_path, student_folder_path)
-
-            # Update Dockerfile names
-            dockerfiles_path = os.path.join(student_folder_path, "dockerfiles")
-            for fname in os.listdir(dockerfiles_path):
-                if fname.startswith(f"Dockerfile.{lab.template_folder}"):
-                    new_fname = fname.replace(lab.template_folder, student_folder_name)
-                    print("===============" , new_fname)
-                    os.rename(
-                        os.path.join(dockerfiles_path, fname),
-                        os.path.join(dockerfiles_path, new_fname)
+                    subprocess.run(
+                    'sg', linux_username,
+                    shell=True
                     )
-
-            # Update start.config
-            config_path = os.path.join(student_folder_path, "config", "start.config")
-            print("====================== lab config ", config_path)
-            if os.path.exists(config_path):
-                print("============= START UPDATE CONFIG")
-                update_start_config(config_path, student_folder_name)
-
-            # Create or update lab session
-            lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
-            if not lab_session:
-                lab_session = LabSession(
-                    user_id=user_id,
-                    lab_id=lab_id,
-                    student_folder=student_folder_path
-                )
-                db.session.add(lab_session)
-            else:
-                lab_session.student_folder = student_folder_path
-
-            db.session.commit()
-            return True
-
+                    print(f"✅ Set ownership to {linux_username} for {student_folder_path}")
+                except Exception as e:
+                    print(f"Warning: Could not set ownership: {e}")
+        else:
+            print(f"Student folder already exists: {student_folder_path}")
+        
+        # Create or update lab session
+        lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
+        if not lab_session:
+            lab_session = LabSession(
+                user_id=user_id,
+                lab_id=lab_id,
+                student_folder=student_folder_path
+            )
+            db.session.add(lab_session)
+            print(f"Created new lab session for user {user_id}, lab {lab_id}")
+        else:
+            lab_session.student_folder = student_folder_path
+            print(f"Updated existing lab session {lab_session.id}")
+        
+        db.session.commit()
+        return True
+        
     except Exception as e:
         print(f"Error cloning lab folder: {e}")
+        import traceback
+        traceback.print_exc()
         db.session.rollback()
         return False
-
-    return False
-
-def update_start_config(config_path, student_folder_name):
-    """
-    Update start.config placeholders based on an available network.
-    - Finds placeholders in file like ${lab_master_seed}, ${subnet_network_name},
-      ${subnet_network_mask}, ${subnet_network_gateway}, ${subnet_network_ip1}, ...
-    - Chọn LabsNetwork.used==False (first available), sinh IP cho các subnet_network_ipN
-      theo thứ tự host addresses (bỏ gateway nếu trùng), bắt đầu từ host đầu (.1), 
-      nhưng sẽ skip gateway và sử dụng host thứ 1 cho ip1 (commonly .2 if .1 is gateway).
-    - Ghi file và mark network.used = True.
-    """
-
-    # 1. Load an available network
-
-    network = LabsNetwork.query.filter_by(used=False).first()
-    if not network:
-        raise ValueError("No available network for lab!")
-
-    # 2. Read file and find placeholders ${...}
-    with open(config_path, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    # Find all placeholders like ${name}
-    print("================= config content", content)
-    placeholders = set(re.findall(r"\$\{([^}]+)\}", content))
-
-    # Determine how many subnet_network_ipN placeholders are present and which indices
-    ip_placeholder_pattern = re.compile(r"^subnet_network_ip(\d+)$")
-    ip_indices = []
-    for ph in placeholders:
-        m = ip_placeholder_pattern.match(ph)
-        if m:
-            ip_indices.append(int(m.group(1)))
-    if ip_indices:
-        max_ip_index = max(ip_indices)
-    else:
-        max_ip_index = 0
-
-    # 3. Prepare replacement mapping
-    replacements = {}
-
-    # lab_master_seed
-    if "lab_master_seed" in placeholders:
-        replacements["lab_master_seed"] = f"{student_folder_name}_master_seed"
-
-    # subnet_network_name, mask, gateway
-    if "subnet_network_name" in placeholders:
-        replacements["subnet_network_name"] = network.name
-    if "subnet_network_mask" in placeholders:
-        # use network.mask if available, else build from network.subnet_ip_base + '/24' as fallback
-        replacements["subnet_network_mask"] = getattr(network, "mask", "") or getattr(network, "subnet_ip_base", "") + "0/24"
-    if "subnet_network_gateway" in placeholders:
-        replacements["subnet_network_gateway"] = network.gateway
-
-    # 4. Generate IP addresses for ip placeholders
-    if max_ip_index > 0:
-        # Derive ip_network
-        # Prefer a stored mask attribute (e.g., '172.25.0.0/24'), otherwise try to build from subnet_ip_base
-        net_spec = None
-        if getattr(network, "mask", None):
-            net_spec = network.mask
-        elif getattr(network, "subnet_ip_base", None):
-            # e.g. '172.25.0.' -> build '172.25.0.0/24' as fallback
-            ip_base = network.subnet_ip_base.rstrip('.')
-            net_spec = f"{ip_base}.0/24"
-        else:
-            raise ValueError("Network record lacks mask and subnet_ip_base")
-
-        try:
-            ip_net = ipaddress.ip_network(net_spec, strict=False)
-        except Exception as e:
-            raise ValueError(f"Invalid network specification '{net_spec}': {e}")
-
-        # Build list of usable hosts, skipping network and broadcast automatically
-        hosts = list(ip_net.hosts())  # generator -> list of IPv4Address objects
-
-        # If gateway present, ensure we skip it when assigning
-        gateway_addr = None
-        if getattr(network, "gateway", None):
-            try:
-                gateway_addr = ipaddress.ip_address(network.gateway)
-            except Exception:
-                gateway_addr = None
-
-        # Create an iterator skipping gateway
-        assignable_hosts = [h for h in hosts if gateway_addr is None or h != gateway_addr]
-
-        # Sanity check: need at least max_ip_index hosts available
-        if len(assignable_hosts) < max_ip_index:
-            raise ValueError(
-                f"Not enough assignable hosts in network {net_spec} to satisfy {max_ip_index} IPs"
-            )
-
-        # Map ip placeholders: subnet_network_ip1 -> first assignable host, etc.
-        for idx in range(1, max_ip_index + 1):
-            addr = str(assignable_hosts[idx - 1])  # idx-1 because list is 0-based
-            replacements[f"subnet_network_ip{idx}"] = addr
-
-    # 5. Also provide convenience: if placeholders ask for subnet_network_ip_list or similar
-    if "subnet_network_ip_list" in placeholders:
-        # create comma-separated list of assigned ips
-        ip_list = []
-        for idx in range(1, max_ip_index + 1):
-            ip_list.append(replacements.get(f"subnet_network_ip{idx}", ""))
-        replacements["subnet_network_ip_list"] = ",".join(ip_list)
-
-    # 6. Replace all placeholders in the content: ${name} -> replacements[name]
-    def _replace_match(m):
-        key = m.group(1)
-        return str(replacements.get(key, m.group(0)))  # if not found, keep original
-
-    new_content = re.sub(r"\$\{([^}]+)\}", _replace_match, content)
-
-    # 7. Write back file
-    with open(config_path, "w", encoding="utf-8") as f:
-        f.write(new_content)
-
-    # 8. Mark network as used and commit
-    network.used = True
-    db.session.commit()
-
-    return True
 
 @app.route('/api/start_lab/<int:lab_id>', methods=['POST'])
 @login_required
@@ -687,7 +1693,10 @@ def start_lab(lab_id):
     user_id = session['user']['id']
     
     # Get lab and verify user enrollment
-    lab = Lab.query.get(lab_id)
+    lab = db.session.get(Lab, lab_id)
+    user = User.query.filter_by(id=user_id).first()
+    user_linux_name = get_student_username(user.email)
+    print("PREPARE FOR LABS ", lab.name)
     if not lab:
         return jsonify({'error': 'Lab not found'}), 404
     
@@ -701,10 +1710,15 @@ def start_lab(lab_id):
     # Get or create lab session
     lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
     if not lab_session:
-        # Clone lab folder if not exists
+        # Clone lab folder and create session
         if not clone_lab_folder(user_id, lab_id):
-            return jsonify({'error': 'Failed to setup lab environment'}), 500
+            print(f"Failed to clone lab folder for user {user_id}, lab {lab_id}")
+            return jsonify({'error': 'Failed to setup lab environment. Please check if the lab template exists.'}), 500
+        # Fetch the newly created session
         lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
+        if not lab_session:
+            print(f"Lab session not found after cloning for user {user_id}, lab {lab_id}")
+            return jsonify({'error': 'Failed to create lab session'}), 500
     
     # Update session status
     if lab_session.status == 'not_started':
@@ -715,10 +1729,26 @@ def start_lab(lab_id):
     
     try:
         db.session.commit()
+        print("PREPARE FOR LABS ", lab.name)
+        # Apply parameter file modifications if specified
+        if lab.lab_parameters and lab_session.student_folder:
+            apply_parameter_file_modifications(lab, lab_session.student_folder)
         
-        # Execute build command if specified
-        if lab.build_command and lab_session.student_folder:
-            execute_build_command(lab.build_command, lab_session.student_folder)
+        # # Execute build command if specified
+        # if lab.build_command and lab_session.student_folder:
+        #     execute_build_command(user_linux_name, lab.build_command, lab_session.student_folder)
+        
+        # Execute run commands if specified
+        print(f"Student folder: {lab_session.student_folder}")
+        print(f"Raw command list: {lab.run_commands_list}")
+        if lab.run_commands_list and lab_session.student_folder:
+            # For qua từng command trong list
+            for command in lab.run_commands_list:
+                # Thay thế tất cả parameters với random values
+                print(f"Raw run command: {command}")
+                replaced_command = replace_lab_parameters(lab, command, user)
+                print(f"Executing run command: {replaced_command}")
+                execute_run_command(user_linux_name, replaced_command, lab_session.student_folder)
         
         return jsonify({
             'message': 'Lab started successfully',
@@ -727,18 +1757,132 @@ def start_lab(lab_id):
         })
     except Exception as e:
         db.session.rollback()
+        print(f"Error starting lab: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': 'Failed to start lab'}), 500
 
-def execute_build_command(build_command, working_directory):
-    """Execute build command in lab directory"""
+def apply_parameter_file_modifications(lab, student_folder):
+    """
+    Modify files with parameter values when file_path is specified
+    
+    Args:
+        lab: Lab object with parameters
+        student_folder: Path to student's lab folder
+    """
+    import random
+    
+    # Store parameter replacements to use consistently
+    parameter_replacements = {}
+    
+    # First pass: determine random values for all parameters
+    for param in lab.lab_parameters:
+        if param.values_list:
+            parameter_replacements[param.parameter_name] = random.choice(param.values_list)
+    
+    # Second pass: modify files if file_path is specified
+    for param in lab.lab_parameters:
+        if not param.file_path:
+            continue
+        
+        # Construct full file path
+        file_full_path = os.path.join(student_folder, param.file_path)
+        
+        if not os.path.exists(file_full_path):
+            print(f"⚠️ File not found for parameter modification: {file_full_path}")
+            continue
+        
+        try:
+            # Read file content
+            with open(file_full_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Replace all parameters in the file
+            modified_content = content
+            for param_name, param_value in parameter_replacements.items():
+                modified_content = modified_content.replace(param_name, str(param_value))
+            
+            # Write back modified content
+            with open(file_full_path, 'w', encoding='utf-8') as f:
+                f.write(modified_content)
+            
+            print(f"✅ Modified file: {param.file_path}")
+            print(f"   Replacements: {parameter_replacements}")
+            
+        except Exception as e:
+            print(f"❌ Error modifying file {file_full_path}: {e}")
+
+def replace_lab_parameters(lab, command, user):
+    """
+    Replace lab parameters in command with random values from their ranges
+    For qua tất cả parameters của lab, chọn random value và replace vào command
+    
+    Args:
+        lab: Lab object with parameters
+        command: Command string with parameters like ${fieldName}
+    
+    Returns:
+        Command with parameters replaced
+    """
+    import random
+    
+    replaced_command = command.replace("${email}", user.email)
+    
+    # For qua tất cả parameters của bài lab
+    for param in lab.lab_parameters:
+        parameter_name = param.parameter_name  # e.g., ${fieldName}
+        values_list = param.values_list  # List các giá trị có thể
+        
+        if not values_list:
+            continue
+        
+        # Chọn random 1 giá trị từ list
+        random_value = random.choice(values_list)
+        
+        # Replace tất cả occurrences của parameter name = parameter value
+        replaced_command = replaced_command.replace(parameter_name, str(random_value))
+        
+        print(f"Replaced {parameter_name} with {random_value}")
+    
+    return replaced_command
+
+def execute_run_command(user_linux_name, run_command, working_directory):
+    """Execute run command when lab starts"""
     try:
+        # Dùng newgrp -c "<command>" để chạy command với group mới
+        full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo {run_command}"'
+
         result = subprocess.run(
-            build_command,
+            full_command,
             shell=True,
-            cwd=working_directory,
             capture_output=True,
             text=True,
-            timeout=300  # 5 minutes timeout
+            timeout=500
+        )
+        
+        print(f"Run command executed. Exit code: {result.returncode}")
+        if result.stdout:
+            print(f"Run output: {result.stdout}")
+        if result.stderr:
+            print(f"Run errors: {result.stderr}")
+        return result.returncode == 0
+    except subprocess.TimeoutExpired:
+        print("Run command timed out")
+        return False
+    except Exception as e:
+        print(f"Error executing run command: {e}")
+        return False
+
+def execute_build_command(user_linux_name, build_command, working_directory):
+    """Execute build command in lab directory"""
+    try:
+        full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo {build_command}"'
+        result = subprocess.run(
+            full_command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=30
         )
         print(f"Build command executed. Exit code: {result.returncode}")
         if result.stdout:
@@ -771,8 +1915,257 @@ def lab_terminal(lab_id):
     
     return render_template('lab_terminal.html', lab_session=lab_session)
 
+@app.route('/api/lab/<int:lab_session_id>/submit', methods=['POST'])
+@login_required
+def submit_lab(lab_session_id):
+    """Submit lab with checkpoint answers"""
+    user_id = session['user']['id']
+    
+    # Get lab session and verify ownership
+    lab_session = LabSession.query.get_or_404(lab_session_id)
+    if lab_session.user_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    lab = lab_session.lab
+    data = request.json
+    user = db.session.get(User, user_id)
+    # Validate number of checkpoints
+    if lab.num_checkpoints == 0:
+        return jsonify({'error': 'This lab does not have checkpoints configured'}), 400
+    
+    checkpoint_answers = data.get('checkpoint_answers', [])
+    if len(checkpoint_answers) != lab.num_checkpoints:
+        return jsonify({
+            'error': f'Expected {lab.num_checkpoints} checkpoint answers, got {len(checkpoint_answers)}'
+        }), 400
+    
+    try:
+        # Validate and score checkpoints
+        results = validate_checkpoints(lab, lab_session, checkpoint_answers, user)
+        
+        # Calculate score based on points from each checkpoint
+        total_points = 0
+        earned_points = 0
+        passed_checkpoints = 0
+        
+        for result in results:
+            total_points += result['points']
+            if result['passed']:
+                earned_points += result['points']
+                passed_checkpoints += 1
+        
+        # Calculate final score (scale to max_score)
+        if total_points > 0:
+            score = int((earned_points / total_points) * lab.max_score)
+        else:
+            score = 0
+        
+        # Determine if passed based on minimum score
+        minimum_score = lab.minimum_score or 0
+        passed = score >= minimum_score
+        status = 'completed' if passed else 'failed'
+        
+        # Update lab session
+        lab_session.checkpoint_answers = json.dumps(checkpoint_answers)
+        lab_session.checkpoint_results = json.dumps(results)
+        lab_session.score = score
+        lab_session.status = status
+        lab_session.completed_at = datetime.utcnow()
+        lab_session.submission_notes = data.get('notes', '')
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Lab submitted successfully',
+            'score': score,
+            'max_score': lab.max_score,
+            'minimum_score': minimum_score,
+            'passed': passed,
+            'status': status,
+            'earned_points': earned_points,
+            'total_points': total_points,
+            'passed_checkpoints': passed_checkpoints,
+            'total_checkpoints': lab.num_checkpoints,
+            'results': results
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error submitting lab: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+def validate_checkpoints(lab, lab_session, checkpoint_answers, user):
+    """
+    Validate checkpoint answers based on lab rules
+    
+    Args:
+        lab: Lab object with checkpoint_rules (JSON array with decode_method, expected_answer, case_sensitive, points, use_auto_flag)
+        lab_session: LabSession object with generated_flag
+        checkpoint_answers: List of student answers
+    
+    Returns:
+        List of validation results with points
+    """
+    import base64
+    import hashlib
+    
+    # Parse checkpoint rules
+    try:
+        rules = json.loads(lab.checkpoint_rules) if lab.checkpoint_rules else []
+    except:
+        rules = []
+    
+    results = []
+    
+    for i, answer in enumerate(checkpoint_answers):
+        # Get rule for this checkpoint
+        if i < len(rules):
+            rule = rules[i]
+            decode_method = rule.get('decode_method', 'plain')
+            expected_answer = rule.get('expected_answer', '')
+            case_sensitive = rule.get('case_sensitive', False)
+            points = rule.get('points', 10)
+            use_auto_flag = rule.get('use_auto_flag', False)  # New option for auto-generated flag
+        else:
+            # Default if no rule configured
+            decode_method = 'plain'
+            expected_answer = ''
+            case_sensitive = False
+            points = 10
+            use_auto_flag = False
+        
+        result = {
+            'checkpoint': i + 1,
+            'passed': False,
+            'student_answer': answer,
+            'decoded_answer': None,
+            'expected_answer': expected_answer,
+            'points': points,
+            'earned_points': 0,
+            'message': ''
+        }
+        
+        try:
+            # Decode answer based on method
+            decoded = decode_checkpoint_answer(answer, decode_method)
+            result['decoded_answer'] = decoded
+            
+            # Generate unique flag for this lab session
+            # Format: Flag{SHA1(date_email_lab-key)}
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            import hashlib
+
+            user_email = user.email  # hoặc gán chuỗi trực tiếp
+
+            # Lấy thời gian theo Asia/Ho_Chi_Minh và format giống hệt bash: DDMMYYYY
+            dt = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
+            date_str = dt.strftime("%d%m%Y")
+
+            # Ghép chuỗi giống hệt bash
+            print("========== ", date_str, user_email, expected_answer)
+            flag_input = f"{date_str}_{user_email}_{expected_answer}"
+
+            # Hash SHA1 giống bash
+            flag_hash = hashlib.sha1(flag_input.encode()).hexdigest()
+
+            lab_session.generated_flag = f"FLAG{{{flag_hash}}}"
+            print(f"Generated flag for lab session: {lab_session.generated_flag}")
+
+            # Determine expected value
+            if use_auto_flag:
+                # Use auto-generated flag from lab session
+                expected_value = lab_session.generated_flag if lab_session.generated_flag else expected_answer
+                result['expected_answer'] = '[Auto-generated Flag]'
+            else:
+                expected_value = str(expected_answer)
+            
+            # Compare with expected answer
+            student_value = str(decoded).strip()
+            expected_value = str(expected_value).strip()
+            
+            if not case_sensitive:
+                student_value = student_value.lower()
+                expected_value = expected_value.lower()
+            print("STUDENT VALUE ", student_value)
+            print("EXPECTED VALUE ", expected_value)
+            if student_value == expected_value:
+                result['passed'] = True
+                result['earned_points'] = points
+                result['message'] = f'✓ Correct! (+{points} points)'
+            else:
+                result['message'] = f'✗ Incorrect (0/{points} points)'
+                
+        except Exception as e:
+            result['message'] = f'Decode error: {str(e)}'
+        
+        results.append(result)
+    
+    return results
+
+def decode_checkpoint_answer(answer, method):
+    """
+    Decode checkpoint answer using specified method
+    
+    Args:
+        answer: Raw answer string
+        method: Decoding method (base64, md5, sha256, sha1, plain, reverse, hex)
+    
+    Returns:
+        Decoded value (for comparison with expected answer)
+        
+    Note:
+        - plain: Direct text (no transformation)
+        - base64: Decode base64 to text
+        - md5/sha1/sha256: Hash methods - answer should be the hash itself (for verification)
+        - reverse: Reverse the string
+        - hex: Decode hex to text
+    """
+    import base64
+    import hashlib
+    
+    if method == 'plain':
+        # Direct comparison - no transformation
+        return answer
+    
+    elif method == 'base64':
+        # Decode base64 encoded input
+        try:
+            return base64.b64decode(answer).decode('utf-8')
+        except:
+            raise ValueError('Invalid base64 string')
+    
+    elif method == 'md5':
+        # For hash methods: answer is already the hash, just return it for comparison
+        # Expected answer should be the hash of the secret value
+        return answer.lower().strip()
+    
+    elif method == 'sha256':
+        # For hash methods: answer is already the hash, just return it for comparison
+        return answer.lower().strip()
+    
+    elif method == 'sha1':
+        # For hash methods: answer is already the hash, just return it for comparison
+        return answer.lower().strip()
+    
+    elif method == 'reverse':
+        # Reverse the string
+        return answer[::-1]
+    
+    elif method == 'hex':
+        # Decode hex to text
+        try:
+            return bytes.fromhex(answer).decode('utf-8')
+        except:
+            raise ValueError('Invalid hex string')
+    
+    else:
+        raise ValueError(f'Unknown decode method: {method}')
+
 # WebSocket Terminal Handlers
-active_terminals = {}
+active_terminals = {}  # {session_id: {'terminal_session_id': int, 'lab_session_id': int, 'pty_fd': int, 'pid': int, 'read_thread': Thread}}
 
 @socketio.on('connect')
 def handle_connect():
@@ -784,11 +2177,30 @@ def handle_disconnect():
     session_id = request.sid
     print(f"Client disconnected: {session_id}")
     
-    # Clean up terminal session
+    # Clean up terminal session and kill pty process
     if session_id in active_terminals:
         terminal_info = active_terminals[session_id]
+        
+        # Kill pty process if exists
+        if 'pid' in terminal_info and terminal_info['pid']:
+            try:
+                os.kill(terminal_info['pid'], signal.SIGTERM)
+                print(f"Killed pty process: {terminal_info['pid']}")
+            except ProcessLookupError:
+                print(f"Process {terminal_info['pid']} already dead")
+            except Exception as e:
+                print(f"Error killing process: {e}")
+        
+        # Close pty file descriptor
+        if 'pty_fd' in terminal_info and terminal_info['pty_fd']:
+            try:
+                os.close(terminal_info['pty_fd'])
+                print(f"Closed pty fd: {terminal_info['pty_fd']}")
+            except Exception as e:
+                print(f"Error closing pty fd: {e}")
+        
         try:
-            terminal_session = TerminalSession.query.get(terminal_info['terminal_session_id'])
+            terminal_session = db.session.get(TerminalSession, terminal_info['terminal_session_id'])
             if terminal_session:
                 terminal_session.is_active = False
                 db.session.commit()
@@ -815,38 +2227,156 @@ def handle_start_terminal(data):
         emit('terminal_error', {'error': 'Lab session not found'})
         return
     
+    # Get user object
+    user = db.session.get(User, user_id)
+    if not user:
+        emit('terminal_error', {'error': 'User not found'})
+        return
+    
     # Create terminal session
     terminal_session_id = str(uuid.uuid4())
-    print("===================== student_folder", lab_session.student_folder)
     terminal_session = TerminalSession(
         session_id=terminal_session_id,
         user_id=user_id,
         lab_session_id=lab_session_id,
-        #current_directory=lab_session.student_folder or '/tmp'
-        current_directory= '/home/student/labtainer/trunk/scripts/labtainer-student'
+        current_directory=lab_session.student_folder or '/tmp'
     )
     
     db.session.add(terminal_session)
     db.session.commit()
     
-    # Store in active terminals with IDs instead of objects
-    active_terminals[session_id] = {
-        'terminal_session_id': terminal_session.id,
-        'lab_session_id': lab_session.id,
-        'command_buffer': ''
-    }
+    # Check if Windows or Linux
+    is_windows = platform.system() == 'Windows'
     
-    # Send welcome message
-    welcome_msg = f"""
+    if is_windows:
+        # Windows: Simple command-based mode (no pty)
+        active_terminals[session_id] = {
+            'terminal_session_id': terminal_session.id,
+            'lab_session_id': lab_session.id,
+            'command_buffer': '',
+            'is_windows': True
+        }
+        
+        welcome_msg = f"""
 🧪 Lab Terminal - {lab_session.lab.name}
 📁 Working Directory: {lab_session.student_folder}
 ⚠️  Security: Commands are validated for safety
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 {get_prompt(lab_session.student_folder)}"""
+        
+        emit('terminal_output', {'data': welcome_msg})
+        emit('terminal_ready', {'status': 'ready'})
+    else:
+        # Linux: Use pty for real bash session with user isolation
+        try:
+            linux_username = get_student_username(user.email)
+            working_dir = lab_session.student_folder or '/tmp'
+            
+            # Fork a pty process
+            pid, fd = pty.fork()
+            
+            if pid == 0:
+                # Child process - this will exec into bash as student user
+                try:
+                    # Set environment variables
+                    os.environ['HOME'] = working_dir
+                    os.environ['USER'] = linux_username
+                    os.environ['LOGNAME'] = linux_username
+                    os.environ['SHELL'] = '/bin/bash'
+                    os.environ['TERM'] = 'xterm-256color'
+                    
+                    # # Change to working directory
+                    # os.chdir(working_dir)
+                    
+                    # # Execute bash as the student user
+                    # os.execvp('sudo', ['sudo', '-u', linux_username, '/bin/bash'])
+                    # child process, vẫn ở folder Python hiện tại
+                    os.execvp('sudo', [
+                        'sudo',
+                        '-u', linux_username,
+                        '/bin/bash',
+                        '-c',
+                        f'cd {working_dir} && newgrp {linux_username}'
+                    ])
+                except Exception as e:
+                    print(f"Child process error: {e}", flush=True)
+                    os._exit(1)
+            else:
+                # Parent process - read from pty and send to client
+                # Set fd to non-blocking
+                import fcntl
+                flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+                fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+                
+                # Store terminal info
+                active_terminals[session_id] = {
+                    'terminal_session_id': terminal_session.id,
+                    'lab_session_id': lab_session.id,
+                    'pty_fd': fd,
+                    'pid': pid,
+                    'is_windows': False
+                }
+                
+                # Start reading thread for pty output
+                import threading
+                read_thread = threading.Thread(
+                    target=read_pty_output,
+                    args=(session_id, fd),
+                    daemon=True
+                )
+                read_thread.start()
+                active_terminals[session_id]['read_thread'] = read_thread
+                
+                print(f"✅ Started pty session - PID: {pid}, FD: {fd}, User: {linux_username}")
+                result = subprocess.run(['id'], capture_output=True, text=True)
+                print("Output of `id`:", result.stdout.strip())
+                emit('terminal_ready', {'status': 'ready'})
+                
+        except Exception as e:
+            error_msg = f"Failed to start terminal: {e}"
+            print(error_msg)
+            traceback.print_exc()
+            emit('terminal_error', {'error': error_msg})
+            return
+
+def read_pty_output(session_id, fd):
+    """Read output from pty and send to client via WebSocket"""
+    print(f"Started pty reader thread for session {session_id}")
     
-    emit('terminal_output', {'data': welcome_msg})
-    emit('terminal_ready', {'status': 'ready'})
+    try:
+        while session_id in active_terminals:
+            try:
+                # Use select to wait for data with timeout
+                readable, _, _ = select.select([fd], [], [], 0.1)
+                
+                if readable:
+                    try:
+                        # Read data from pty
+                        data = os.read(fd, 4096)
+                        if data:
+                            # Decode and send to client
+                            output = data.decode('utf-8', errors='replace')
+                            socketio.emit('terminal_output', {'data': output}, room=session_id)
+                        else:
+                            # EOF - process died
+                            print(f"PTY EOF for session {session_id}")
+                            break
+                    except OSError as e:
+                        if e.errno == 5:  # EIO - process terminated
+                            print(f"PTY process terminated for session {session_id}")
+                            break
+                        raise
+                        
+            except Exception as e:
+                print(f"Error reading from pty: {e}")
+                break
+                
+    except Exception as e:
+        print(f"PTY reader thread error: {e}")
+    finally:
+        print(f"PTY reader thread stopped for session {session_id}")
+        socketio.emit('terminal_error', {'error': 'Terminal session ended'}, room=session_id)
 
 def get_prompt(current_dir):
     """Get terminal prompt"""
@@ -864,36 +2394,66 @@ def handle_terminal_input(data):
     
     terminal_info = active_terminals[session_id]
     
+    # Check if Windows or Linux mode
+    if terminal_info.get('is_windows', False):
+        # Windows mode - command-based execution
+        handle_windows_terminal_input(session_id, input_data, terminal_info)
+    else:
+        # Linux mode - pty-based, just forward input to pty
+        pty_fd = terminal_info.get('pty_fd')
+        if pty_fd:
+            try:
+                # Write input directly to pty
+                os.write(pty_fd, input_data.encode('utf-8'))
+                
+                # Update last activity
+                try:
+                    terminal_session = db.session.get(TerminalSession, terminal_info['terminal_session_id'])
+                    if terminal_session:
+                        terminal_session.last_activity = datetime.utcnow()
+                        db.session.commit()
+                except Exception as e:
+                    print(f"Warning: Could not update last activity: {e}")
+                    db.session.rollback()
+                    
+            except Exception as e:
+                print(f"Error writing to pty: {e}")
+                emit('terminal_error', {'error': f'Failed to write to terminal: {e}'})
+        else:
+            emit('terminal_error', {'error': 'Terminal not ready'})
+
+def handle_windows_terminal_input(session_id, input_data, terminal_info):
+    """Handle terminal input for Windows (command-based mode)"""
     # Get fresh database objects using IDs
-    terminal_session = TerminalSession.query.get(terminal_info['terminal_session_id'])
-    lab_session = LabSession.query.get(terminal_info['lab_session_id'])
+    terminal_session = db.session.get(TerminalSession, terminal_info['terminal_session_id'])
+    lab_session = db.session.get(LabSession, terminal_info['lab_session_id'])
     
     if not terminal_session or not lab_session:
-        emit('terminal_error', {'error': 'Terminal session expired'})
+        emit('terminal_error', {'error': 'Terminal session expired'}, room=session_id)
         return
     
     # Handle input character by character
     if input_data == '\r' or input_data == '\n':
         # Execute command
-        command = terminal_info['command_buffer'].strip()
+        command = terminal_info.get('command_buffer', '').strip()
         if command:
             execute_secure_command(session_id, command, terminal_session, lab_session)
         else:
-            emit('terminal_output', {'data': f'\r\n{get_prompt(terminal_session.current_directory)}'})
+            emit('terminal_output', {'data': f'\r\n{get_prompt(terminal_session.current_directory)}'}, room=session_id)
         terminal_info['command_buffer'] = ''
         
     elif input_data == '\x7f':  # Backspace
-        if terminal_info['command_buffer']:
+        if terminal_info.get('command_buffer', ''):
             terminal_info['command_buffer'] = terminal_info['command_buffer'][:-1]
-            emit('terminal_output', {'data': '\b \b'})
+            emit('terminal_output', {'data': '\b \b'}, room=session_id)
             
     elif input_data == '\x03':  # Ctrl+C
         terminal_info['command_buffer'] = ''
-        emit('terminal_output', {'data': f'^C\r\n{get_prompt(terminal_session.current_directory)}'})
+        emit('terminal_output', {'data': f'^C\r\n{get_prompt(terminal_session.current_directory)}'}, room=session_id)
         
-    elif ord(input_data) >= 32:  # Printable characters
+    elif input_data and len(input_data) == 1 and ord(input_data) >= 32:  # Printable characters
         terminal_info['command_buffer'] += input_data
-        emit('terminal_output', {'data': input_data})
+        emit('terminal_output', {'data': input_data}, room=session_id)
     
     # Update last activity
     try:
@@ -902,6 +2462,36 @@ def handle_terminal_input(data):
     except Exception as e:
         print(f"Warning: Could not update last activity: {e}")
         db.session.rollback()
+
+@socketio.on('terminal_resize')
+def handle_terminal_resize(data):
+    """Handle terminal resize events (for pty)"""
+    session_id = request.sid
+    
+    if session_id not in active_terminals:
+        return
+    
+    terminal_info = active_terminals[session_id]
+    
+    # Only handle resize for pty-based terminals (Linux)
+    if terminal_info.get('is_windows', False):
+        return
+    
+    pty_fd = terminal_info.get('pty_fd')
+    if not pty_fd:
+        return
+    
+    try:
+        cols = data.get('cols', 80)
+        rows = data.get('rows', 24)
+        
+        # Set terminal window size
+        winsize = struct.pack('HHHH', rows, cols, 0, 0)
+        fcntl.ioctl(pty_fd, termios.TIOCSWINSZ, winsize)
+        
+        print(f"Terminal resized to {cols}x{rows} for session {session_id}")
+    except Exception as e:
+        print(f"Error resizing terminal: {e}")
 
 def execute_secure_command(socket_session_id, command, terminal_session, lab_session):
     """Execute command with security validation"""
@@ -953,7 +2543,6 @@ def execute_secure_command(socket_session_id, command, terminal_session, lab_ses
                 original_command = command
                 if command.lower().startswith('ls'):
                     # Convert ls to dir on Windows
-                    import platform
                     if platform.system() == 'Windows':
                         if command.lower() == 'ls':
                             command = 'dir'
@@ -964,15 +2553,39 @@ def execute_secure_command(socket_session_id, command, terminal_session, lab_ses
                     # Convert cat to type on Windows
                     command = command.replace('cat ', 'type ', 1)
                 
-                # Execute system command
-                result = subprocess.run(
-                    command,
-                    shell=True,
-                    cwd=current_dir,
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
+                elif command.lower() == 'pwd' and platform.system() == 'Windows':
+                    # Convert pwd to cd on Windows (shows current directory)
+                    command = 'cd'
+                
+                # Execute system command with user isolation (Linux only)
+                if platform.system() != 'Windows':
+                    # Get Linux username for this student
+                    linux_username = get_student_username(lab_session.user.email)
+                    
+                    # Run command as the specific Linux user using sudo
+                    # This provides isolation between students
+                    wrapped_command = [
+                        'sudo', '-u', linux_username,
+                        'bash', '-c',
+                        f'cd {current_dir} && {command}'
+                    ]
+                    
+                    result = subprocess.run(
+                        wrapped_command,
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                else:
+                    # On Windows, run normally (no user isolation)
+                    result = subprocess.run(
+                        command,
+                        shell=True,
+                        cwd=current_dir,
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
                 
                 output = result.stdout
                 if result.stderr:
@@ -1166,11 +2779,13 @@ def create_sample_templates():
                 with open(full_file_path, 'w') as f:
                     f.write(content)
     
-    print("✅ Sample lab templates created!")
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        
+        # Create sample data for testing
+        create_sample_data()
     
     print("🚀 Starting Lab Management System...")
     print("📡 Server will be available at: http://localhost:5000")
@@ -1180,4 +2795,3 @@ if __name__ == '__main__':
     
     socketio.run(app, debug=True, host='0.0.0.0', port=5000)
     
-    print("✅ Sample lab templates created!")
