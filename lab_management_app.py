@@ -501,7 +501,9 @@ def index():
 @app.route('/login')
 def login():
     redirect_uri = url_for('auth_callback', _external=True)
-    return google.authorize_redirect(redirect_uri)
+    return google.authorize_redirect(redirect_uri,
+        access_type="offline",
+        prompt="consent")
 
 @app.route('/auth/callback')
 def auth_callback():

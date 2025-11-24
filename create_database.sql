@@ -7,7 +7,7 @@ COLLATE utf8mb4_unicode_ci;
 USE lab_management;
 
 -- Grant privileges (if needed)
--- GRANT ALL PRIVILEGES ON lab_management.* TO 'root'@'localhost';
--- FLUSH PRIVILEGES;
+GRANT ALL PRIVILEGES ON lab_management.* TO 'labtainer'@'localhost';
+FLUSH PRIVILEGES;
 
 -- Database is now ready for Flask-Migrate to create tables
