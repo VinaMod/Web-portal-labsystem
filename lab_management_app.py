@@ -1969,7 +1969,13 @@ def execute_run_command(user_linux_name, run_command, working_directory):
             text=True,
             timeout=500
         )
-        full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo {run_command}"'
+        last_folder = os.path.basename(working_directory)  # ví dụ: lab-1
+        expected_cmd = f"rebuild_{last_folder}"
+
+        if run_command == expected_cmd:
+            full_command = run_command
+        else:
+            full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo {run_command}"'
 
         result = subprocess.run(
             full_command,
@@ -2178,12 +2184,13 @@ def validate_checkpoints(lab, lab_session, checkpoint_answers, user):
             import hashlib
 
             user_email = user.email  # hoặc gán chuỗi trực tiếp
-
+            username = get_student_username(user_email)
             # Lấy thời gian theo Asia/Ho_Chi_Minh và format giống hệt bash: DDMMYYYY
             dt = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
             date_str = dt.strftime("%d%m%Y")
 
             # Ghép chuỗi giống hệt bash
+            expected_answer = expected_answer.replace(STUDENT_NAME_LAB_PARAMETER, username)
             print("========== ", date_str, user_email, expected_answer)
             flag_input = f"{date_str}_{user_email}_{expected_answer}"
 
@@ -2294,8 +2301,24 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     session_id = request.sid
-    print(f"Client disconnected: {session_id}")
     
+    if 'user' not in session:
+        emit('terminal_error', {'error': 'Not authenticated'})
+        return
+    
+    user_id = session['user']['id']
+
+    # Get user object
+    user = db.session.get(User, user_id)
+    if not user:
+        emit('terminal_error', {'error': 'User not found'})
+        return
+    user_name = get_student_username(user.email)
+    print(f"Client disconnected: {session_id}")
+    print("=============== START CLEAN UP DOCKER OF " , user_name)
+    cleanup_docker_resources(user_name)
+    print("=============== END CLEAN UP DOCKER OF " , user_name)
+
     # Clean up terminal session and kill pty process
     if session_id in active_terminals:
         terminal_info = active_terminals[session_id]
@@ -2328,6 +2351,38 @@ def handle_disconnect():
             db.session.rollback()
         finally:
             del active_terminals[session_id]
+import subprocess
+
+def cleanup_docker_resources(student_name):
+    try:
+        # Escape student_name để tránh lỗi shell injection
+        student_name = student_name.replace("'", "")
+
+        # Remove containers
+        cmd_containers = f"docker ps -a --format '{{{{.Names}}}}' | grep '{student_name}' || true"
+        containers = subprocess.getoutput(cmd_containers)
+
+        if containers.strip():
+            for c in containers.splitlines():
+                print(f"Removing container: {c}")
+                subprocess.call(f"docker rm -f {c}", shell=True)
+        else:
+            print(f"No containers found for {student_name}")
+
+        # Remove networks
+        cmd_networks = f"docker network ls --format '{{{{.Name}}}}' | grep '{student_name}' || true"
+        networks = subprocess.getoutput(cmd_networks)
+
+        if networks.strip():
+            for n in networks.splitlines():
+                print(f"Removing network: {n}")
+                subprocess.call(f"docker network rm {n}", shell=True)
+        else:
+            print(f"No networks found for {student_name}")
+
+    except Exception as e:
+        print(f"Error when cleaning docker resources: {e}")
+         
 
 @socketio.on('start_terminal')
 def handle_start_terminal(data):
