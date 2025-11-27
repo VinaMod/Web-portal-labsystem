@@ -1975,7 +1975,7 @@ def execute_run_command(user_linux_name, run_command, working_directory):
             timeout=500
         )
         last_folder = os.path.basename(working_directory)  # ví dụ: lab-1
-        expected_cmd = f"rebuild_{last_folder}"
+        expected_cmd = f"rebuild {last_folder}"
         
         print("================== expected_cmd ", expected_cmd)
         if run_command == expected_cmd:
