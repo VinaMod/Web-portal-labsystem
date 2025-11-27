@@ -1947,8 +1947,8 @@ def replace_lab_parameters(lab, command, user):
                 network = LabsNetwork.query.filter_by(used=False).first()
                 if not network:
                     raise ValueError("No available network for lab!")
+            import re   
             pattern = rf"{re.escape(LAB_SUB_NETWORK_IP_PREFIX)}_(\d+)"
-            import re
             # Replace từng match
             def replacer(match):
                 index = int(match.group(1))
