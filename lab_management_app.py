@@ -1915,7 +1915,9 @@ def replace_lab_parameters(lab, command, user):
     
     username = get_student_username(user.email)
     user_id = username.replace("student_","")
+    print("================ STUDENT_ID ============= ", user_id)
     replaced_command = command.replace("${email}", user.email)
+    print("========================= ", replaced_command)
     replaced_command = replaced_command.replace(STUDENT_ID_LAB_PARAMETER, user_id)
     # For qua tất cả parameters của bài lab
     for param in lab.lab_parameters:
