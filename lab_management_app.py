@@ -76,6 +76,7 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max file size
 
 STUDENT_NAME_LAB_PARAMETER = "${studentName}"
+STUDENT_ID_LAB_PARAMETER = "${studentId}"
 LAB_NETWORK_MASK_PARAMETER = "${labNetworkMask}"
 LAB_NETWORK_GATEWAY_PARAMETER = "${labNetworkGateway}"
 LAB_SUB_NETWORK_IP_PREFIX = "${labSubnetIpPrefix}"
@@ -1912,8 +1913,10 @@ def replace_lab_parameters(lab, command, user):
     """
     import random
     
+    username = get_student_username(user.email)
+    user_id = username.replace("student_","")
     replaced_command = command.replace("${email}", user.email)
-    replaced_command = replaced_command.replace(STUDENT_NAME_LAB_PARAMETER, get_student_username(user.email))
+    replaced_command = replaced_command.replace(STUDENT_ID_LAB_PARAMETER, user_id)
     # For qua tất cả parameters của bài lab
     for param in lab.lab_parameters:
         parameter_name = param.parameter_name  # e.g., ${fieldName}
@@ -1924,7 +1927,7 @@ def replace_lab_parameters(lab, command, user):
         
         # Chọn random 1 giá trị từ list
         random_value = random.choice(values_list)
-        random_value = random_value.replace(STUDENT_NAME_LAB_PARAMETER, get_student_username(user.email))
+        random_value = random_value.replace(STUDENT_NAME_LAB_PARAMETER, username)
         network = None
         if LAB_NETWORK_MASK_PARAMETER in random_value:
             network = LabsNetwork.query.filter_by(used=False).first()
