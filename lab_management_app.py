@@ -1913,7 +1913,7 @@ def replace_lab_parameters(lab, command, user):
     import random
     
     replaced_command = command.replace("${email}", user.email)
-    
+    replaced_command = replaced_command.replace(STUDENT_NAME_LAB_PARAMETER, get_student_username(user.email))
     # For qua tất cả parameters của bài lab
     for param in lab.lab_parameters:
         parameter_name = param.parameter_name  # e.g., ${fieldName}
@@ -1977,6 +1977,7 @@ def execute_run_command(user_linux_name, run_command, working_directory):
         else:
             full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo {run_command}"'
 
+        print("============ FULL COMMAND ========== ", full_command)
         result = subprocess.run(
             full_command,
             shell=True,
