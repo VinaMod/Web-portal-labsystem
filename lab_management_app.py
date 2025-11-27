@@ -1897,7 +1897,28 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name):
 
         except Exception as e:
             print(f"❌ Error modifying file {final_file_path}: {e}")
+    rename_files_in_folder(student_folder + "/dockerfiles", user_linux_name)
+    rename_files_in_folder(student_folder + "/web-server", user_linux_name)
 
+def rename_files_in_folder(folder_path, user_linux_name):
+    # Nếu folder không tồn tại thì bỏ qua
+    if not os.path.isdir(folder_path):
+        print(f"Folder không tồn tại: {folder_path}")
+        return
+
+    for filename in os.listdir(folder_path):
+        old_path = os.path.join(folder_path, filename)
+
+        # Chỉ đổi tên file thường, không phải folder
+        if os.path.isfile(old_path) and "${studentName}" in filename:
+            new_filename = filename.replace("${studentName}", user_linux_name)
+            new_path = os.path.join(folder_path, new_filename)
+
+            try:
+                os.rename(old_path, new_path)
+                print(f"Rename: {filename} → {new_filename}")
+            except Exception as e:
+                print(f"Rename ERROR {filename}: {e}")
 
 def replace_lab_parameters(lab, command, user):
     """
