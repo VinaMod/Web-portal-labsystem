@@ -1827,8 +1827,8 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name):
                     network = LabsNetwork.query.filter_by(used=False).first()
                     if not network:
                         raise ValueError("No available network for lab!")
+                import re    
                 pattern = rf"{re.escape(LAB_SUB_NETWORK_IP_PREFIX)}_(\d+)"
-                import re
                 # Replace từng match
                 def replacer(match):
                     index = int(match.group(1))
