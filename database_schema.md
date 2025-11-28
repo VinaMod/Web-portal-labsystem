@@ -177,8 +177,8 @@ INSERT INTO labs (course_id, name, description, template_folder, accessible_reso
 
 ### Lab networks
 ``` sql
-INSERT INTO "main"."labs_network" ("id", "name", "subnet_ip_base", "mask", "gateway", "used", "created_at", "updated_at") VALUES (1, 'some_network_1', '172.25.0.', '172.25.0.0/24', '172.25.0.101', 1, NULL, NULL);
-INSERT INTO "main"."labs_network" ("id", "name", "subnet_ip_base", "mask", "gateway", "used", "created_at", "updated_at") VALUES (2, 'some_network_2', '172.26.0.', '172.26.0.0/24', '172.26.0.101', 0, NULL, NULL);
+INSERT INTO labs_network (name, subnet_ip_base, mask, gateway, used, created_at, updated_at) VALUES ('some_network_1', '172.25.0.', '172.25.0.0/24', '172.25.0.101', 0, NULL, NULL);
+INSERT INTO labs_network ( name, subnet_ip_base, mask, gateway, used, created_at, updated_at) VALUES ('some_network_2', '172.26.0.', '172.26.0.0/24', '172.26.0.101', 0, NULL, NULL);
 ```
 
 ## Security Considerations
