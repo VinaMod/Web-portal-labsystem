@@ -1807,6 +1807,7 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name):
     rename_files_if_contains(student_folder, user_linux_name)        
     rename_files_in_matching_folders(student_folder,"dockerfiles", user_linux_name)
     rename_files_in_matching_folders(student_folder,"web-server", user_linux_name)
+    rename_files_in_matching_folders(student_folder,"client", user_linux_name)
     # First pass: determine random values for all parameters
     for param in lab.lab_parameters:
         if param.values_list:
