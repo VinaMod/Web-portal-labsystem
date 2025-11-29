@@ -1921,6 +1921,8 @@ def rename_files_if_contains(folder_path, user_linux_name):
 
 def rename_files_in_matching_folders(folder_path, search_text, replace_text):
     # Kiểm tra folder gốc tồn tại
+    print("====== PARAM FILE NAME ", search_text)
+    print("====== PARAM FILE NAME VALUE", replace_text)
     if not os.path.isdir(folder_path):
         print(f"Folder không tồn tại: {folder_path}")
         return
@@ -1937,8 +1939,9 @@ def rename_files_in_matching_folders(folder_path, search_text, replace_text):
             for filename in os.listdir(subfolder_path):
                 old_file_path = os.path.join(subfolder_path, filename)
 
-                if os.path.isfile(old_file_path) and search_text in filename:
-                    new_filename = filename.replace(search_text, replace_text)
+                if os.path.isfile(old_file_path) and (STUDENT_NAME_LAB_PARAMETER in filename or STUDENT_ID_LAB_PARAMETER in filename):
+                    new_filename = filename.replace(STUDENT_NAME_LAB_PARAMETER, replace_text)
+                    new_filename = filename.replace(STUDENT_ID_LAB_PARAMETER, replace_text)
                     new_file_path = os.path.join(subfolder_path, new_filename)
 
                     try:
