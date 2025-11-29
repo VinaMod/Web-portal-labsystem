@@ -1920,35 +1920,72 @@ def rename_files_if_contains(folder_path, user_linux_name):
             print(f"✔ Đổi: {file_name} → {new_file_name}")
 
 def rename_files_in_matching_folders(folder_path, search_text, replace_text):
-    # Kiểm tra folder gốc tồn tại
     print("====== PARAM FILE NAME ", search_text)
     print("====== PARAM FILE NAME VALUE", replace_text)
+
+    # Kiểm tra folder gốc
     if not os.path.isdir(folder_path):
         print(f"Folder không tồn tại: {folder_path}")
         return
 
-    # Duyệt folder con trong folder_path
+    # === 1) RENAME FILES TRONG CÁC FOLDER KHỚP SEARCH TEXT ===
     for entry in os.listdir(folder_path):
         subfolder_path = os.path.join(folder_path, entry)
 
-        # Chỉ xử lý folder
         if os.path.isdir(subfolder_path) and search_text in entry:
             print(f"⚡ Found folder: {entry}")
 
-            # Duyệt file trong folder này
             for filename in os.listdir(subfolder_path):
                 old_file_path = os.path.join(subfolder_path, filename)
 
-                if os.path.isfile(old_file_path) and (STUDENT_NAME_LAB_PARAMETER in filename or STUDENT_ID_LAB_PARAMETER in filename):
-                    new_filename = filename.replace(STUDENT_NAME_LAB_PARAMETER, replace_text)
-                    new_filename = filename.replace(STUDENT_ID_LAB_PARAMETER, replace_text)
-                    new_file_path = os.path.join(subfolder_path, new_filename)
+                if os.path.isfile(old_file_path):
+                    new_filename = filename
 
-                    try:
-                        os.rename(old_file_path, new_file_path)
-                        print(f"✔ Rename: {filename} → {new_filename}")
-                    except Exception as e:
-                        print(f"❌ Rename ERROR {filename}: {e}")
+                    # Thay thế tên sinh viên hoặc ID
+                    if STUDENT_NAME_LAB_PARAMETER in filename:
+                        new_filename = new_filename.replace(STUDENT_NAME_LAB_PARAMETER, replace_text)
+
+                    if STUDENT_ID_LAB_PARAMETER in filename:
+                        new_filename = new_filename.replace(
+                            STUDENT_ID_LAB_PARAMETER,
+                            replace_text.replace("student_", "")
+                        )
+
+                    # Nếu tên mới khác tên cũ → rename
+                    if new_filename != filename:
+                        new_file_path = os.path.join(subfolder_path, new_filename)
+
+                        try:
+                            os.rename(old_file_path, new_file_path)
+                            print(f"✔ Rename: {filename} → {new_filename}")
+                        except Exception as e:
+                            print(f"❌ Rename ERROR {filename}: {e}")
+
+    # === 2) RENAME CHÍNH CÁC FOLDER KHỚP SEARCH TEXT ===
+    for entry in os.listdir(folder_path):
+        old_folder_path = os.path.join(folder_path, entry)
+
+        if os.path.isdir(old_folder_path) and search_text in entry:
+            new_folder_name = entry
+
+            if STUDENT_NAME_LAB_PARAMETER in entry:
+                new_folder_name = new_folder_name.replace(STUDENT_NAME_LAB_PARAMETER, replace_text)
+
+            if STUDENT_ID_LAB_PARAMETER in entry:
+                new_folder_name = new_folder_name.replace(
+                    STUDENT_ID_LAB_PARAMETER,
+                    replace_text.replace("student_", "")
+                )
+
+            new_folder_path = os.path.join(folder_path, new_folder_name)
+
+            # Chỉ rename khi có thay đổi
+            if new_folder_name != entry:
+                try:
+                    os.rename(old_folder_path, new_folder_path)
+                    print(f"📁 Folder rename: {entry} → {new_folder_name}")
+                except Exception as e:
+                    print(f"❌ Folder rename error {entry}: {e}")
 
 def replace_lab_parameters(lab, command, user):
     """
