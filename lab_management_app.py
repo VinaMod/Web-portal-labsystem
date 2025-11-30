@@ -2121,22 +2121,17 @@ SCRIPT_TEMPLATE = r"""#!/bin/bash
 exec docker exec -it ${containerName} bash
 """
 def create_student_docker(username, studentId, containerName):
-    # 1. Tạo user
-    run(f"sudo useradd -m {username}")
-
-    # 2. Tạo file studentId cho user
-    run("sudo mkdir -p /etc/student_ids")
-    id_path = f"/etc/student_ids/{username}.id"
-    run(f"echo '{studentId}' | sudo tee {id_path}")
-    run(f"sudo chmod 644 {id_path}")
-
     # 3. Tạo file script riêng
     script_path = f"/usr/local/bin/docker_client_shell_{username}_{containerName}"
-    with open("/tmp/tmp_script.sh", "w") as f:
-        f.write(SCRIPT_TEMPLATE.replace("${containerName}", containerName))
+    if os.path.exists(script_path):
+        print(f"⚠ Script exists, skip: {script_path}")
+        return
+    else:
+        with open("/tmp/tmp_script.sh", "w") as f:
+            f.write(SCRIPT_TEMPLATE.replace("${containerName}", containerName))
 
-    run(f"sudo mv /tmp/tmp_script.sh {script_path}")
-    run(f"sudo chmod 755 {script_path}")
+        run(f"sudo mv /tmp/tmp_script.sh {script_path}")
+        run(f"sudo chmod 755 {script_path}")
 
     # 4. Thêm sudoers rule
     sudoers_rule = f"{username} ALL=(root) NOPASSWD: {script_path}\n"
