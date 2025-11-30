@@ -121,6 +121,7 @@ CREATE TABLE `lab_sessions` (
   `last_accessed` datetime DEFAULT NULL,
   `score` int DEFAULT NULL,
   `submission_notes` text COLLATE utf8mb4_unicode_ci,
+  `success_start_lab_output` text COLLATE utf8mb4_unicode_ci,
   `checkpoint_answers` text COLLATE utf8mb4_unicode_ci,
   `checkpoint_results` text COLLATE utf8mb4_unicode_ci,
   `generated_flag` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,

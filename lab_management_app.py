@@ -240,6 +240,7 @@ class LabSession(db.Model):
     last_accessed = db.Column(db.DateTime)
     score = db.Column(db.Integer)
     submission_notes = db.Column(db.Text)
+    success_start_lab_output = db.Column(db.Text)
     checkpoint_answers = db.Column(db.Text)  # JSON: student's checkpoint answers
     checkpoint_results = db.Column(db.Text)  # JSON: validation results for each checkpoint
     generated_flag = db.Column(db.String(255))  # Auto-generated flag for this lab session
@@ -1749,14 +1750,14 @@ def start_lab(lab_id):
         lab_session.started_at = datetime.utcnow()
     
     lab_session.last_accessed = datetime.utcnow()
-    
+    port = get_free_port(8000, 10000)
+    print("===================== WEB TEST RUN IN PORT ", port)
+    lab_session.success_start_lab_output = lab.output_result.replace("${webTestPort}", port)
+    print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
     try:
         db.session.commit()
         print("PREPARE FOR LABS ", lab.name)
-        port = get_free_port(8000, 10000)
-        print("===================== WEB TEST RUN IN PORT ", port)
-        print("===================== EXPECT OUTPUT RESULT ", lab_session.lab.output_result.replace("${webTestPort}", port))
-        lab_session.lab.output_result = lab_session.lab.output_result.replace("${webTestPort}", port)
+    
         # Apply parameter file modifications if specified
         if lab.lab_parameters and lab_session.student_folder:
             apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name, port)
