@@ -1820,7 +1820,7 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
         if param.values_list:
             value = random.choice(param.values_list)
             value = value.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
-            value = value.replace("${webTestPort}", port)
+            value = value.replace("${webTestPort}", str(port))
             network = None
             if LAB_NETWORK_MASK_PARAMETER in value:
                 network = LabsNetwork.query.filter_by(used=False).first()
