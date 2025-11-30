@@ -1751,8 +1751,10 @@ def start_lab(lab_id):
     
     lab_session.last_accessed = datetime.utcnow()
     port = get_free_port(8000, 10000)
+    if not port:
+        raise ValueError("No available port for lab!")
     print("===================== WEB TEST RUN IN PORT ", port)
-    lab_session.success_start_lab_output = lab.output_result.replace("${webTestPort}", port)
+    lab_session.success_start_lab_output = lab.output_result.replace("${webTestPort}", str(port))
     print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
     try:
         db.session.commit()
