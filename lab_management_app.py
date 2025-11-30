@@ -2035,6 +2035,8 @@ def replace_lab_parameters(lab, command, user):
         # Chọn random 1 giá trị từ list
         random_value = random.choice(values_list)
         random_value = random_value.replace(STUDENT_NAME_LAB_PARAMETER, username)
+        random_value = random_value.replace(STUDENT_ID_LAB_PARAMETER, user_id)
+
         network = None
         if LAB_NETWORK_MASK_PARAMETER in random_value:
             network = LabsNetwork.query.filter_by(used=False).first()
