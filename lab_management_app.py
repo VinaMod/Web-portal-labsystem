@@ -2085,7 +2085,7 @@ def execute_run_command(user_linux_name, run_command, working_directory):
         
         print("================== expected_cmd ", expected_cmd)
         if run_command == expected_cmd:
-            full_command = f'sg {user_linux_name} -c "cd ~/labtainer/labtainer-student && {run_command}"'
+            full_command = f'sudo -u {user_linux_name} -g {user_linux_name} bash -c "cd ~/labtainer/labtainer-student && {run_command}"'
         else:
             full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo {run_command}"'
 
