@@ -1549,7 +1549,7 @@ def create_linux_user(username, home_dir=None):
             return False, error_msg
         
         # Set appropriate permissions for home directory
-        subprocess.run(['sudo', 'chmod', '775', home_dir], check=True)
+        subprocess.run(['sudo', 'chmod', '777', home_dir], check=True)
         subprocess.run(['sudo', 'chown', f'{username}:{username}', home_dir], check=True)
         
         print(f"✅ Created Linux user: {username} with home: {home_dir}")
@@ -1665,7 +1665,7 @@ def clone_lab_folder(user_id, lab_id):
                     
                     # Set appropriate permissions (read/write/execute for owner, read for group)
                     subprocess.run([
-                        'sudo', 'chmod', '-R', '775', 
+                        'sudo', 'chmod', '-R', '777', 
                         student_folder_path
                     ], check=True, capture_output=True)
                     
@@ -2085,7 +2085,7 @@ def execute_run_command(user_linux_name, run_command, working_directory):
         
         print("================== expected_cmd ", expected_cmd)
         if run_command == expected_cmd:
-            full_command = f'sudo -u {user_linux_name} -g {user_linux_name} bash -c "cd ~/labtainer/labtainer-student && {run_command}"'
+            full_command = f"cd ~/labtainer/labtainer-student && {run_command}"
         else:
             full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo {run_command}"'
 
