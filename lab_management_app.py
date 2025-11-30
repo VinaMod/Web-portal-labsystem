@@ -2079,6 +2079,7 @@ def execute_run_command(user_linux_name, run_command, working_directory):
             text=True,
             timeout=500
         )
+        cleanup_docker_resources(user_linux_name)
         last_folder = os.path.basename(working_directory)  # ví dụ: lab-1
         expected_cmd = f"rebuild {last_folder}"
         
@@ -2469,6 +2470,7 @@ def cleanup_docker_resources(student_name):
     try:
         # Escape student_name để tránh lỗi shell injection
         student_name = student_name.replace("'", "")
+        student_name = student_name.replace("student_", "")
 
         # Remove containers
         cmd_containers = f"docker ps -a --format '{{{{.Names}}}}' | grep '{student_name}' || true"
