@@ -1821,7 +1821,11 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
         if param.values_list:
             value = random.choice(param.values_list)
             value = value.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
+            value = value.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name)
             value = value.replace("${webTestPort}", str(port))
+            if "${dockerExecCommand}" in param.parameter_name:
+                create_student_docker(user_linux_name, user_linux_name, value)
+                continue
             network = None
             if LAB_NETWORK_MASK_PARAMETER in value:
                 network = LabsNetwork.query.filter_by(used=False).first()
@@ -2113,7 +2117,46 @@ def execute_run_command(user_linux_name, run_command, working_directory):
     except Exception as e:
         print(f"Error executing run command: {e}")
         return False
+SCRIPT_TEMPLATE = r"""#!/bin/bash
+exec docker exec -it ${containerName} bash
+"""
+def create_student_docker(username, studentId, containerName):
+    # 1. Tạo user
+    run(f"sudo useradd -m {username}")
 
+    # 2. Tạo file studentId cho user
+    run("sudo mkdir -p /etc/student_ids")
+    id_path = f"/etc/student_ids/{username}.id"
+    run(f"echo '{studentId}' | sudo tee {id_path}")
+    run(f"sudo chmod 644 {id_path}")
+
+    # 3. Tạo file script riêng
+    script_path = f"/usr/local/bin/docker_client_shell_{username}_{containerName}"
+    with open("/tmp/tmp_script.sh", "w") as f:
+        f.write(SCRIPT_TEMPLATE.replace("${containerName}", containerName))
+
+    run(f"sudo mv /tmp/tmp_script.sh {script_path}")
+    run(f"sudo chmod 755 {script_path}")
+
+    # 4. Thêm sudoers rule
+    sudoers_rule = f"{username} ALL=(root) NOPASSWD: {script_path}\n"
+    sudoers_path = f"/etc/sudoers.d/{username}"
+    with open("/tmp/tmp_sudoers", "w") as f:
+        f.write(sudoers_rule)
+
+    run(f"sudo mv /tmp/tmp_sudoers {sudoers_path}")
+    run(f"sudo chmod 440 {sudoers_path}")
+
+    print("\nDONE! Student created successfully:")
+    print(f"- Username: {username}")
+    print(f"- Student ID: {studentId}")
+    print(f"- Script: sudo docker_client_shell_{username}_{containerName}")
+def run(cmd):
+    print(f"--> {cmd}")
+    result = subprocess.run(cmd, shell=True)
+    if result.returncode != 0:
+        print("ERROR running:", cmd)
+        sys.exit(1)    
 def execute_build_command(user_linux_name, build_command, working_directory):
     """Execute build command in lab directory"""
     try:
