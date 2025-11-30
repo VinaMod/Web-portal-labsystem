@@ -1753,9 +1753,13 @@ def start_lab(lab_id):
     try:
         db.session.commit()
         print("PREPARE FOR LABS ", lab.name)
+        port = get_free_port(8000, 10000)
+        print("===================== WEB TEST RUN IN PORT ", port)
+        print("===================== EXPECT OUTPUT RESULT ", lab_session.lab.output_result.replace("${webTestPort}", port))
+        lab_session.lab.output_result = lab_session.lab.output_result.replace("${webTestPort}", port)
         # Apply parameter file modifications if specified
         if lab.lab_parameters and lab_session.student_folder:
-            apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name)
+            apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name, port)
         
         # # Execute build command if specified
         # if lab.build_command and lab_session.student_folder:
@@ -1785,7 +1789,7 @@ def start_lab(lab_id):
         traceback.print_exc()
         return jsonify({'error': 'Failed to start lab'}), 500
 
-def apply_parameter_file_modifications(lab, student_folder, user_linux_name):
+def apply_parameter_file_modifications(lab, student_folder, user_linux_name, port):
     """
     Modify files with parameter values when file_path is specified
     and rename file if file_path contains STUDENT_NAME_LAB_PARAMETER
@@ -1813,7 +1817,7 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name):
         if param.values_list:
             value = random.choice(param.values_list)
             value = value.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
-
+            value = value.replace("${webTestPort}", port)
             network = None
             if LAB_NETWORK_MASK_PARAMETER in value:
                 network = LabsNetwork.query.filter_by(used=False).first()
@@ -1901,6 +1905,15 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name):
 
         except Exception as e:
             print(f"❌ Error modifying file {final_file_path}: {e}")
+def get_free_port(start=8000, end=8999):
+    for port in range(start, end + 1):
+        cmd = f"ss -tuln | grep -q ':{port} '"
+        result = subprocess.run(cmd, shell=True)
+        
+        if result.returncode != 0:   # grep không tìm thấy → port rảnh
+            return port
+    
+    return None            
 def rename_files_if_contains(folder_path, user_linux_name):
     # Kiểm tra folder tồn tại
     if not os.path.exists(folder_path):
