@@ -2140,8 +2140,10 @@ def create_student_docker(username, studentId, containerName):
     # 4. Thêm sudoers rule
     sudoers_rule = f"{username} ALL=(root) NOPASSWD: {script_path}\n"
     sudoers_path = f"/etc/sudoers.d/{username}"
+    run("sudo mkdir -p /etc/sudoers.d")
     if os.path.exists(sudoers_path):
         run(f"sudo rm -f {sudoers_path}")
+
     temp_sudoer_file = f"/tmp/tmp_sudoers_{username}"
     run(f"sudo touch {temp_sudoer_file}")
     run(f"sudo chmod 777 {temp_sudoer_file}")
