@@ -1822,7 +1822,7 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
         if param.values_list:
             value = random.choice(param.values_list)
             value = value.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
-            value = value.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name)
+            value = value.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_", ""))
             value = value.replace("${webTestPort}", str(port))
             if "${dockerExecCommand}" in param.parameter_name:
                 create_student_docker(user_linux_name, user_linux_name, value)
@@ -2124,6 +2124,10 @@ exec docker exec -it ${containerName} bash
 def create_student_docker(username, studentId, containerName):
     # 3. Tạo file script riêng
     script_path = f"/usr/local/bin/docker_client_shell_{username}_{containerName}"
+
+    # Đảm bảo thư mục tồn tại
+    run("sudo mkdir -p /usr/local/bin")
+
     if os.path.exists(script_path):
         print(f"⚠ Script exists, skip: {script_path}")
         return
@@ -2137,22 +2141,25 @@ def create_student_docker(username, studentId, containerName):
     # 4. Thêm sudoers rule
     sudoers_rule = f"{username} ALL=(root) NOPASSWD: {script_path}\n"
     sudoers_path = f"/etc/sudoers.d/{username}"
+
     with open("/tmp/tmp_sudoers", "w") as f:
         f.write(sudoers_rule)
 
     run(f"sudo mv /tmp/tmp_sudoers {sudoers_path}")
+    run(f"sudo chown root:root {sudoers_path}")
     run(f"sudo chmod 440 {sudoers_path}")
 
     print("\nDONE! Student created successfully:")
     print(f"- Username: {username}")
     print(f"- Student ID: {studentId}")
     print(f"- Script: sudo docker_client_shell_{username}_{containerName}")
+
 def run(cmd):
     print(f"--> {cmd}")
     result = subprocess.run(cmd, shell=True)
     if result.returncode != 0:
         print("ERROR running:", cmd)
-        sys.exit(1)    
+        raise ValueError("ERROR WHEN CREATE DOCKER EXEC")
 def execute_build_command(user_linux_name, build_command, working_directory):
     """Execute build command in lab directory"""
     try:
