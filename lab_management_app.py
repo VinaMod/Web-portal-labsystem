@@ -2746,6 +2746,7 @@ def handle_terminal_input(data):
         if pty_fd:
             try:
                 # Write input directly to pty
+                print("========== EXE COMMAND ", input_data.encode('utf-8'))
                 os.write(pty_fd, input_data.encode('utf-8'))
                 
                 # Update last activity
