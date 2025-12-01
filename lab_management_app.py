@@ -2124,27 +2124,25 @@ exec docker exec -it ${containerName} bash
 def create_student_docker(username, studentId, containerName):
     # 3. Tạo file script riêng
     script_path = f"/usr/local/bin/docker_client_shell_{username}_{containerName}"
+    if os.path.exists(script_path):
+        run(f"sudo rm -f {script_path}")
 
     # Đảm bảo thư mục tồn tại
     run("sudo mkdir -p /usr/local/bin")
     temp_script_file = f"/tmp/tmp_script_{containerName}.sh"
-    if os.path.exists(script_path):
-        print(f"⚠ Script exists, skip: {script_path}")
-        return
-    else:
-        run(f"sudo touch {temp_script_file}")
-        run(f"sudo chmod 777 {temp_script_file}")
-        with open(f"{temp_script_file}", "w") as f:
-            f.write(SCRIPT_TEMPLATE.replace("${containerName}", containerName))
+    run(f"sudo touch {temp_script_file}")
+    run(f"sudo chmod 777 {temp_script_file}")
+    with open(f"{temp_script_file}", "w") as f:
+        f.write(SCRIPT_TEMPLATE.replace("${containerName}", containerName))
 
-        run(f"sudo mv {temp_script_file} {script_path}")
-        run(f"sudo chmod 755 {script_path}")
-        run(f"sudo rm {temp_script_file}")
-
+    run(f"sudo mv {temp_script_file} {script_path}")
+    run(f"sudo chmod 755 {script_path}")
+    run(f"sudo rm {temp_script_file}")
     # 4. Thêm sudoers rule
     sudoers_rule = f"{username} ALL=(root) NOPASSWD: {script_path}\n"
     sudoers_path = f"/etc/sudoers.d/{username}"
-
+    if os.path.exists(sudoers_path):
+        run(f"sudo rm -f {sudoers_path}")
     temp_sudoer_file = f"/tmp/tmp_sudoers_{username}"
     run(f"sudo touch {temp_sudoer_file}")
     run(f"sudo chmod 777 {temp_sudoer_file}")
