@@ -1755,7 +1755,8 @@ def start_lab(lab_id):
         raise ValueError("No available port for lab!")
     print("===================== WEB TEST RUN IN PORT ", port)
     lab_session.success_start_lab_output = lab.output_result.replace("${webTestPort}", str(port))
-    lab_session.success_start_lab_output = lab.output_result.replace("${studentId}", user_linux_name.replace("student_",""))
+    lab_session.success_start_lab_output = lab.output_result.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
+    lab_session.success_start_lab_output = lab.output_result.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name.replace("student_",""))
     print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
     try:
         db.session.commit()
