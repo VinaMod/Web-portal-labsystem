@@ -2726,6 +2726,7 @@ def get_prompt(current_dir):
     dir_name = os.path.basename(current_dir) if current_dir else 'unknown'
     return f"lab:{dir_name}$ "
 
+command_buffers = {}
 @socketio.on('terminal_input')
 def handle_terminal_input(data):
     session_id = request.sid
@@ -2756,8 +2757,18 @@ def handle_terminal_input(data):
                     if terminal_session:
                         terminal_session.last_activity = datetime.utcnow()
                         terminal_session.command_count = terminal_session.command_count + 1
-                        command_log = CommandLog(terminal_session_id=terminal_session.id,command=input_data.encode('utf-8'),is_allowed=True,blocked_reason=None)
-                        db.session.add(command_log)
+
+                        if session_id not in command_buffers:
+                            command_buffers[session_id] = ''
+                        command_buffers[session_id] += input_data
+
+                        # Kiểm tra Enter (\r hoặc \n)
+                        if '\n' in input_data or '\r' in input_data:
+                            full_command = command_buffers[session_id].replace('\r', '').replace('\n', '')
+                            print(f"User command: {full_command}")  # <-- ghi log hoặc lưu DB
+                            command_buffers[session_id] = ''  # reset buffer    
+                            command_log = CommandLog(terminal_session_id=terminal_session.id,command=full_command,is_allowed=True,blocked_reason=None)
+                            db.session.add(command_log)
                         db.session.commit()
                 except Exception as e:
                     print(f"Warning: Could not update last activity: {e}")
