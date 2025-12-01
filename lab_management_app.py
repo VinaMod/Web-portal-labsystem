@@ -2736,7 +2736,6 @@ def handle_terminal_input(data):
         return
     
     terminal_info = active_terminals[session_id]
-    
     # Check if Windows or Linux mode
     if terminal_info.get('is_windows', False):
         # Windows mode - command-based execution
@@ -2750,10 +2749,14 @@ def handle_terminal_input(data):
                 os.write(pty_fd, input_data.encode('utf-8'))
                 
                 # Update last activity
+                terminal_session_id = terminal_info['terminal_session_id']
                 try:
-                    terminal_session = db.session.get(TerminalSession, terminal_info['terminal_session_id'])
+                    terminal_session = db.session.get(TerminalSession, terminal_session_id)
                     if terminal_session:
                         terminal_session.last_activity = datetime.utcnow()
+                        terminal_session.command_count = terminal_session.command_count + 1
+                        command_log = CommandLog(terminal_session_id=terminal_session.id,command=input_data.encode('utf-8'),is_allowed=True,blocked_reason=None)
+                        db.session.add(command_log)
                         db.session.commit()
                 except Exception as e:
                     print(f"Warning: Could not update last activity: {e}")
