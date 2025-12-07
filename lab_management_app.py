@@ -1755,8 +1755,8 @@ def start_lab(lab_id):
         raise ValueError("No available port for lab!")
     print("===================== WEB TEST RUN IN PORT ", port)
     lab_session.success_start_lab_output = lab.output_result.replace("${webTestPort}", str(port))
-    lab_session.success_start_lab_output = lab.output_result.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
-    lab_session.success_start_lab_output = lab.output_result.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
+    lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
+    lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
     print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
     try:
         db.session.commit()
@@ -1793,6 +1793,81 @@ def start_lab(lab_id):
         import traceback
         traceback.print_exc()
         return jsonify({'error': 'Failed to start lab'}), 500
+@app.route('/api/lab/<int:lab_session_id>/run-commands', methods=['POST'])
+@login_required
+def run_lab_commands(lab_session_id):
+    """Run lab commands manually (for re-running failed start commands)"""
+    user_id = session['user']['id']
+    
+    # Get lab and verify user enrollment
+    lab_session = LabSession.query.get_or_404(lab_session_id)
+    if lab_session.user_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    lab = lab_session.lab
+    lab_id = lab.id
+    user = User.query.filter_by(id=user_id).first()
+    user_linux_name = get_student_username(user.email)
+    print("PREPARE FOR LABS ", lab.name)
+    if not lab:
+        return jsonify({'error': 'Lab not found'}), 404
+    
+    enrollment = Enrollment.query.filter_by(
+        user_id=user_id, course_id=lab.course_id, status='active'
+    ).first()
+    
+    if not enrollment:
+        return jsonify({'error': 'Not enrolled in this course'}), 403
+    
+    # Get or create lab session
+    if not clone_lab_folder(user_id, lab_id):
+            print(f"Failed to clone lab folder for user {user_id}, lab {lab_id}")
+            return jsonify({'error': 'Failed to setup lab environment. Please check if the lab template exists.'}), 500
+    
+    # Update session status
+    if lab_session.status == 'not_started':
+        lab_session.status = 'in_progress'
+        lab_session.started_at = datetime.utcnow()
+    
+    lab_session.last_accessed = datetime.utcnow()
+    port = get_free_port(8000, 10000)
+    if not port:
+        raise ValueError("No available port for lab!")
+    print("===================== WEB TEST RUN IN PORT ", port)
+    lab_session.success_start_lab_output = lab.output_result.replace("${webTestPort}", str(port))
+    lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
+    lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
+    print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
+    try:
+        db.session.commit()
+        print("PREPARE FOR LABS ", lab.name)
+    
+        # Apply parameter file modifications if specified
+        if lab.lab_parameters and lab_session.student_folder:
+            apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name, port)
+        
+        # # Execute build command if specified
+        # if lab.build_command and lab_session.student_folder:
+        #     execute_build_command(user_linux_name, lab.build_command, lab_session.student_folder)
+        
+        # Execute run commands if specified
+        print(f"Student folder: {lab_session.student_folder}")
+        print(f"Raw command list: {lab.run_commands_list}")
+        if lab.run_commands_list and lab_session.student_folder:
+            # For qua từng command trong list
+            for command in lab.run_commands_list:
+                # Thay thế tất cả parameters với random values
+                print(f"Raw run command: {command}")
+                replaced_command = replace_lab_parameters(lab, command, user)
+                print(f"Executing run command: {replaced_command}")
+                execute_run_command(user_linux_name, replaced_command, lab_session.student_folder)
+        
+        return jsonify({'message': 'Lab commands executed successfully'})
+    except Exception as e:
+        print(f"Error running lab commands: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500    
 
 def apply_parameter_file_modifications(lab, student_folder, user_linux_name, port):
     """
@@ -1814,12 +1889,7 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
             timeout=500
         )
     rename_files_if_contains(student_folder, user_linux_name)
-    folders = [
-        d for d in os.listdir(student_folder)
-        if os.path.isdir(os.path.join(student_folder, d))
-    ]
 
-    print(folders)
     rename_files_in_matching_folders(student_folder,"dockerfiles", user_linux_name)
     rename_files_in_matching_folders(student_folder,"web-server", user_linux_name)
     rename_files_in_matching_folders(student_folder,"client", user_linux_name)

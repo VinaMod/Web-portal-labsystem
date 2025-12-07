@@ -445,6 +445,9 @@
         <button class="btn btn-control" onclick="showHelp()">
           <i class="fas fa-question-circle me-1"></i>Help
         </button>
+        <button class="btn btn-control" onclick="runLabCommands()">
+          <i class="fas fa-play me-1"></i>Run Lab
+        </button>
         <button class="btn btn-control" onclick="submitLab()">
           <i class="fas fa-paper-plane me-1"></i>Submit
         </button>
@@ -1069,6 +1072,37 @@
                   resultsDiv.innerHTML = html;
               }
 
+              async function runLabCommands() {
+                  if (!confirm('Run lab setup commands? This will re-execute initialization commands.')) {
+                      return;
+                  }
+
+                  try {
+                      terminal.write('\r\n\x1b[1;33m=== Running Lab Commands ===\x1b[0m\r\n');
+
+                      const response = await fetch(`/api/lab/{{ lab_session.id }}/run-commands`, {
+                          method: 'POST',
+                          headers: {
+                              'Content-Type': 'application/json'
+                          }
+                      });
+
+                      const result = await response.json();
+
+                      if (response.ok) {
+                          terminal.write('\x1b[1;32m✓ Lab commands executed successfully\x1b[0m\r\n');
+                          terminal.write('\x1b[33mPlease check the output above for any errors\x1b[0m\r\n');
+                      } else {
+                          terminal.write(`\x1b[1;31m✗ Error: ${result.error}\x1b[0m\r\n`);
+                          alert(`Error running lab commands: ${result.error}`);
+                      }
+                  } catch (error) {
+                      console.error('Error running lab commands:', error);
+                      terminal.write(`\x1b[1;31m✗ Failed to run lab commands: ${error.message}\x1b[0m\r\n`);
+                      alert('Failed to run lab commands. Please try again.');
+                  }
+              }
+              
               // Prevent accidental page close
               window.addEventListener('beforeunload', (e) => {
                   if (socket.connected) {
