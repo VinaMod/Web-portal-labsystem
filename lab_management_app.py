@@ -1813,10 +1813,17 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
             text=True,
             timeout=500
         )
-    rename_files_if_contains(student_folder, user_linux_name)        
+    rename_files_if_contains(student_folder, user_linux_name)
+    folders = [
+        d for d in os.listdir(student_folder)
+        if os.path.isdir(os.path.join(student_folder, d))
+    ]
+
+    print(folders)
     rename_files_in_matching_folders(student_folder,"dockerfiles", user_linux_name)
     rename_files_in_matching_folders(student_folder,"web-server", user_linux_name)
     rename_files_in_matching_folders(student_folder,"client", user_linux_name)
+    rename_files_in_matching_folders(student_folder,"ftp", user_linux_name)
     # First pass: determine random values for all parameters
     for param in lab.lab_parameters:
         if param.values_list:
