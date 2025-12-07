@@ -2170,6 +2170,13 @@ def execute_run_command(user_linux_name, run_command, working_directory):
         
         print("================== expected_cmd ", expected_cmd)
         if run_command == expected_cmd:
+            result = subprocess.run(
+            f"sudo chown -R student:student {working_directory}",
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=500
+        )
             full_command = f"cd ~/labtainer/labtainer-student && {run_command}"
         else:
             full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo {run_command}"'
