@@ -1549,7 +1549,7 @@ def create_linux_user(username, home_dir=None):
             return False, error_msg
         
         # Set appropriate permissions for home directory
-        subprocess.run(['sudo', 'chmod', '777', home_dir], check=True)
+        subprocess.run(['sudo', 'chmod', '750', home_dir], check=True)
         subprocess.run(['sudo', 'chown', f'{username}:{username}', home_dir], check=True)
         
         print(f"✅ Created Linux user: {username} with home: {home_dir}")
@@ -1656,16 +1656,16 @@ def clone_lab_folder(user_id, lab_id):
             # Step 2: Set ownership to the Linux user (if on Linux/Unix)
             if platform.system() != 'Windows':
                 try:
-                    print("CHOWN TO USER: ", linux_username)
-                    subprocess.run([
-                        'sudo', 'chown', '-R', 
-                        f'{linux_username}:{linux_username}', 
-                        student_folder_path
-                    ], check=True, capture_output=True)
+                    # print("CHOWN TO USER: ", linux_username)
+                    # subprocess.run([
+                    #     'sudo', 'chown', '-R', 
+                    #     f'{linux_username}:{linux_username}', 
+                    #     student_folder_path
+                    # ], check=True, capture_output=True)
                     
                     # Set appropriate permissions (read/write/execute for owner, read for group)
                     subprocess.run([
-                        'sudo', 'chmod', '-R', '777', 
+                        'sudo', 'chmod', '-R', '750', 
                         student_folder_path
                     ], check=True, capture_output=True)
                     
@@ -2169,6 +2169,10 @@ def execute_run_command(user_linux_name, run_command, working_directory):
         expected_cmd = f"rebuild {last_folder}"
         
         print("================== expected_cmd ", expected_cmd)
+        subprocess.run([
+                'sudo', 'chmod', '-R', '777', 
+                working_directory
+            ], check=True, capture_output=True)
         if run_command == expected_cmd:
             result = subprocess.run(
             f"sudo chown -R student:student {working_directory}",
@@ -2179,6 +2183,11 @@ def execute_run_command(user_linux_name, run_command, working_directory):
         )
             full_command = f"cd ~/labtainer/labtainer-student && {run_command}"
         else:
+            print("CHOWN TO USER: ", user_linux_name)
+            subprocess.run([
+            'sudo', 'chown', '-R', f'{user_linux_name}:{user_linux_name}', working_directory
+            ], check=True, capture_output=True)
+
             full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo {run_command}"'
 
         print("============ FULL COMMAND ========== ", full_command)
@@ -2195,6 +2204,13 @@ def execute_run_command(user_linux_name, run_command, working_directory):
             print(f"Run output: {result.stdout}")
         if result.stderr:
             print(f"Run errors: {result.stderr}")
+        subprocess.run([
+                'sudo', 'chmod', '-R', '750', 
+                working_directory
+            ], check=True, capture_output=True)    
+        subprocess.run([
+            'sudo', 'chown', '-R', 'student:student', working_directory
+            ], check=True, capture_output=True)
         return result.returncode == 0
     except subprocess.TimeoutExpired:
         print("Run command timed out")
