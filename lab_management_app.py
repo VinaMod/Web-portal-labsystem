@@ -2212,7 +2212,7 @@ def execute_run_command(user_linux_name, run_command, working_directory):
             'sudo', 'chown', '-R', 'student:student', working_directory
             ], check=True, capture_output=True)
         subprocess.run(
-            f'cd /home/'{user_linux_name},
+            f'cd /home/{user_linux_name}',
             shell=True,
             capture_output=True,
             text=True,
