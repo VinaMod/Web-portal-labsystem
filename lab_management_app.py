@@ -1647,44 +1647,44 @@ def clone_lab_folder(user_id, lab_id):
         # Create unique folder name for student
         student_folder_name = f"{user.email.split('@')[0]}-{lab.template_folder}"
         student_folder_path = os.path.join(STUDENT_LABS_PATH, student_folder_name)
-        
-        # Clone the template folder if it doesn't exist
-        if not os.path.exists(student_folder_path):
-            shutil.copytree(template_path, student_folder_path)
-            print(f"Successfully cloned lab folder: {student_folder_path}")
-            
-            # Step 2: Set ownership to the Linux user (if on Linux/Unix)
-            if platform.system() != 'Windows':
-                try:
-                    # print("CHOWN TO USER: ", linux_username)
-                    # subprocess.run([
-                    #     'sudo', 'chown', '-R', 
-                    #     f'{linux_username}:{linux_username}', 
-                    #     student_folder_path
-                    # ], check=True, capture_output=True)
-                    
-                    # Set appropriate permissions (read/write/execute for owner, read for group)
-                    subprocess.run([
-                        'sudo', 'chmod', '-R', '750', 
-                        student_folder_path
-                    ], check=True, capture_output=True)
-                    
-                    current_user = getpass.getuser()
-                    print("CURRENT USER: ", current_user)
-                    # 4️⃣ Thêm user hiện tại vào group linux_username
-                    subprocess.run([
-                        'sudo', 'usermod', '-aG', linux_username, current_user
-                    ], check=True, capture_output=True)
 
-                    subprocess.run(
-                    'sg', linux_username,
-                    shell=True
-                    )
-                    print(f"✅ Set ownership to {linux_username} for {student_folder_path}")
-                except Exception as e:
-                    print(f"Warning: Could not set ownership: {e}")
-        else:
-            print(f"Student folder already exists: {student_folder_path}")
+        # 🔁 Nếu đã tồn tại thì xóa để clone lại
+        if os.path.exists(student_folder_path):
+            print(f"⚠️ Student folder exists, removing: {student_folder_path}")
+            shutil.rmtree(student_folder_path)
+        shutil.copytree(template_path, student_folder_path)
+        print(f"Successfully cloned lab folder: {student_folder_path}")
+        
+        # Step 2: Set ownership to the Linux user (if on Linux/Unix)
+        if platform.system() != 'Windows':
+            try:
+                # print("CHOWN TO USER: ", linux_username)
+                # subprocess.run([
+                #     'sudo', 'chown', '-R', 
+                #     f'{linux_username}:{linux_username}', 
+                #     student_folder_path
+                # ], check=True, capture_output=True)
+                
+                # Set appropriate permissions (read/write/execute for owner, read for group)
+                subprocess.run([
+                    'sudo', 'chmod', '-R', '750', 
+                    student_folder_path
+                ], check=True, capture_output=True)
+                
+                current_user = getpass.getuser()
+                print("CURRENT USER: ", current_user)
+                # 4️⃣ Thêm user hiện tại vào group linux_username
+                subprocess.run([
+                    'sudo', 'usermod', '-aG', linux_username, current_user
+                ], check=True, capture_output=True)
+
+                subprocess.run(
+                'sg', linux_username,
+                shell=True
+                )
+                print(f"✅ Set ownership to {linux_username} for {student_folder_path}")
+            except Exception as e:
+                print(f"Warning: Could not set ownership: {e}")
         
         # Create or update lab session
         lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
