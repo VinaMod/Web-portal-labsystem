@@ -2720,7 +2720,7 @@ def handle_start_terminal(data):
         # Linux: Use pty for real bash session with user isolation
         try:
             linux_username = get_student_username(user.email)
-            working_dir = lab_session.student_folder or '/tmp'
+            working_dir = f'/home/{linux_username}' or '/tmp'
             
             # Fork a pty process
             pid, fd = pty.fork()
