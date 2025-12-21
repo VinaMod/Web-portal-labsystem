@@ -1895,12 +1895,16 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
     rename_files_in_matching_folders(student_folder,"client", user_linux_name)
     rename_files_in_matching_folders(student_folder,"ftp", user_linux_name)
     # First pass: determine random values for all parameters
+    db_port = get_free_port(3000, 5000)
+    if not db_port:
+        raise ValueError("No available port for lab!")
     for param in lab.lab_parameters:
         if param.values_list:
             value = random.choice(param.values_list)
             value = value.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
             value = value.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_", ""))
             value = value.replace("${webTestPort}", str(port))
+            value = value.replace("${dbTestPort}", str(db_port))
             if "${dockerExecCommand}" in param.parameter_name:
                 create_student_docker(user_linux_name, user_linux_name, value)
                 continue
