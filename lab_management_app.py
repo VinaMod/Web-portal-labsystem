@@ -2691,8 +2691,9 @@ def handle_start_terminal(data):
     ).first()
     linux_username = get_student_username(user.email)
     working_dir = f'/home/{linux_username}' or '/tmp'
-    values =start_command_param if json.loads(start_command_param.parameter_values) else None
-    print("================= PARAMETERS: ", values)
+    values = start_command_param if json.loads(start_command_param.parameter_values) else None
+    for value in values:
+        print("================= PARAMETERS: ", value)
     start_command = values if values[0] else None
     if not start_command:
         start_command = f'cd {working_dir} && newgrp {linux_username}'
