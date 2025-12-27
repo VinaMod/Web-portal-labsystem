@@ -1092,6 +1092,7 @@
                       if (response.ok) {
                           terminal.write('\x1b[1;32m✓ Lab commands executed successfully\x1b[0m\r\n');
                           terminal.write('\x1b[33mPlease check the output above for any errors\x1b[0m\r\n');
+                          terminal.write('Press enter to continue:');
                       } else {
                           terminal.write(`\x1b[1;31m✗ Error: ${result.error}\x1b[0m\r\n`);
                           alert(`Error running lab commands: ${result.error}`);

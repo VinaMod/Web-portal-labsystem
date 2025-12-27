@@ -2739,20 +2739,22 @@ def handle_start_terminal(data):
         emit('terminal_ready', {'status': 'ready'})
     else:
         # Linux: Use pty for real bash session with user isolation
-        try:
+        handle_linux_start_terminal_console(working_dir, linux_username, start_command, session_id, lab_session, terminal_session)
+def handle_linux_start_terminal_console(working_dir, linux_username, start_command, session_id, lab_session, terminal_session):
+    try:
             
-            # Fork a pty process
-            pid, fd = pty.fork()
+         # Fork a pty process
+        pid, fd = pty.fork()
             
-            if pid == 0:
+        if pid == 0:
                 # Child process - this will exec into bash as student user
-                try:
-                    # Set environment variables
-                    os.environ['HOME'] = working_dir
-                    os.environ['USER'] = linux_username
-                    os.environ['LOGNAME'] = linux_username
-                    os.environ['SHELL'] = '/bin/bash'
-                    os.environ['TERM'] = 'xterm-256color'
+            try:
+                # Set environment variables
+                os.environ['HOME'] = working_dir
+                os.environ['USER'] = linux_username
+                os.environ['LOGNAME'] = linux_username
+                os.environ['SHELL'] = '/bin/bash'
+                os.environ['TERM'] = 'xterm-256color'
                     
                     # # Change to working directory
                     # os.chdir(working_dir)
@@ -2761,18 +2763,17 @@ def handle_start_terminal(data):
                     # os.execvp('sudo', ['sudo', '-u', linux_username, '/bin/bash'])
                     # child process, vẫn ở folder Python hiện tại
                     
-                    print("============ START TERMINAL COMMAND: ", start_command)
-                    os.execvp('sudo', [
+                os.execvp('sudo', [
                         'sudo',
                         '-u', linux_username,
                         '/bin/bash',
                         '-c',
                         start_command
                     ])
-                except Exception as e:
+            except Exception as e:
                     print(f"Child process error: {e}", flush=True)
                     os._exit(1)
-            else:
+        else:
                 # Parent process - read from pty and send to client
                 # Set fd to non-blocking
                 import fcntl
@@ -2797,18 +2798,14 @@ def handle_start_terminal(data):
                 )
                 read_thread.start()
                 active_terminals[session_id]['read_thread'] = read_thread
-                
-                print(f"✅ Started pty session - PID: {pid}, FD: {fd}, User: {linux_username}")
-                result = subprocess.run(['id'], capture_output=True, text=True)
-                print("Output of `id`:", result.stdout.strip())
                 emit('terminal_ready', {'status': 'ready'})
                 
-        except Exception as e:
-            error_msg = f"Failed to start terminal: {e}"
-            print(error_msg)
-            traceback.print_exc()
-            emit('terminal_error', {'error': error_msg})
-            return
+    except Exception as e:
+        error_msg = f"Failed to start terminal: {e}"
+        print(error_msg)
+        traceback.print_exc()
+        emit('terminal_error', {'error': error_msg})
+        return
 
 def read_pty_output(session_id, fd):
     """Read output from pty and send to client via WebSocket"""
