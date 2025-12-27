@@ -2832,6 +2832,7 @@ def read_pty_output(session_id, fd):
                             # Decode and send to client
                             output = data.decode('utf-8', errors='replace')
                             socketio.emit('terminal_output', {'data': output}, room=session_id)
+                            print("===== EMIT OUTPUT TO CHANNEL ", session_id)
                         else:
                             # EOF - process died
                             print(f"PTY EOF for session {session_id}")
@@ -2861,6 +2862,7 @@ command_buffers = {}
 @socketio.on('terminal_input')
 def handle_terminal_input(data):
     session_id = request.sid
+    print('================= INPUT DATA FROM CHANNEL ', session_id)
     input_data = data.get('data', '')
     
     if session_id not in active_terminals:
