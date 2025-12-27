@@ -1862,33 +1862,7 @@ def run_lab_commands(lab_session_id):
                 print(f"Executing run command: {replaced_command}")
                 execute_run_command(user_linux_name, replaced_command, lab_session.student_folder)
 
-        print("======= SEND START AND READY EVENT")
-        labParams = LabParameter.query.filter_by(lab_id=lab_session.lab_id)
-        start_command_param = labParams.filter_by(
-                parameter_name='${dockerExecCommand}'
-        ).first()
-        linux_username = get_student_username(user.email)
-        working_dir = f'/home/{linux_username}' or '/tmp'
-        values = json.loads(start_command_param.parameter_values) if start_command_param else None
-        for value in values:
-            print("================= PARAMETERS: ", value)
-        start_command = values[0] if values else None
-        if not start_command:
-            start_command = f'cd {working_dir} && newgrp {linux_username}'
-        else:
-            containerName = start_command.replace(STUDENT_NAME_LAB_PARAMETER, linux_username)
-            start_command = f'sudo docker_client_shell_{linux_username}_{containerName}'
-        terminal_session_id = str(uuid.uuid4())
-        terminal_session = TerminalSession(
-            session_id=terminal_session_id,
-            user_id=user_id,
-            lab_session_id=lab_session_id,
-            current_directory='/tmp'
-        )
-        
-        db.session.add(terminal_session)
-        db.session.commit()    
-        handle_linux_start_terminal_console('/tmp', user_linux_name, start_command, request.sid, lab_session, terminal_session)
+        print("======= SEND START AND READY EVENT")  
         socketio.emit('terminal_ready', {'status': 'ready'})
         base_result = subprocess.run(
             'cd ~' ,  
