@@ -2828,6 +2828,7 @@ def read_pty_output(session_id, fd):
                     try:
                         # Read data from pty
                         data = os.read(fd, 4096)
+                        print("================ DATA OUTPUT TO EMIT ", data)
                         if data:
                             # Decode and send to client
                             output = data.decode('utf-8', errors='replace')
