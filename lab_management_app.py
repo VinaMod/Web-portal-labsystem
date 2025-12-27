@@ -2836,12 +2836,12 @@ def read_pty_output(session_id, fd):
                         else:
                             # EOF - process died
                             print(f"PTY EOF for session {session_id}")
-                            # break
+                            break
                     except OSError as e:
                         if e.errno == 5:  # EIO - process terminated
                             print(f"PTY process terminated for session {session_id}")
-                        #     break
-                        # raise
+                            break
+                        raise
                         
             except Exception as e:
                 print(f"Error reading from pty: {e}")
