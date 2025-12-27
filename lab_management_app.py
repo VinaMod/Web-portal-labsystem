@@ -1865,7 +1865,14 @@ def run_lab_commands(lab_session_id):
         print("======= SEND START AND READY EVENT")
         socketio.emit('start_terminal', { "lab_session_id": lab_session.id })
         socketio.emit('terminal_ready', {'status': 'ready'})
-        return jsonify({'message': 'Lab commands executed successfully'})
+        base_result = subprocess.run(
+            'cd ~' ,  
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=500
+        )
+        return jsonify({'message': 'Lab commands executed successfully', 'data': base_result.stdout})
     except Exception as e:
         print(f"Error running lab commands: {e}")
         import traceback
