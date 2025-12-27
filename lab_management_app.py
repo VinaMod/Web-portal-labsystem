@@ -1440,9 +1440,7 @@ def update_lab_session(session_id):
 @app.route('/admin/lab_session/<int:session_id>/commands')
 @admin_required
 def get_lab_session_commands(session_id):
-    """Get command logs for a lab session"""
-    lab_session = LabSession.query.get_or_404(session_id)
-    
+    """Get command logs for a lab session"""    
     # Get all terminal sessions for this lab session
     terminal_sessions = TerminalSession.query.filter_by(lab_session_id=session_id).all()
     
@@ -1864,14 +1862,38 @@ def run_lab_commands(lab_session_id):
 
         print("======= SEND START AND READY EVENT")  
         socketio.emit('terminal_ready', {'status': 'ready'})
-        base_result = subprocess.run(
-            'cd ~' ,  
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=500
+        labParams = LabParameter.query.filter_by(lab_id=lab_session.lab_id)
+        start_command_param = labParams.filter_by(
+                parameter_name='${dockerExecCommand}'
+        ).first()
+        linux_username = get_student_username(user.email)
+        working_dir = f'/home/{linux_username}' or '/tmp'
+        values = json.loads(start_command_param.parameter_values) if start_command_param else None
+        for value in values:
+            print("================= PARAMETERS: ", value)
+        start_command = values[0] if values else None
+        if not start_command:
+            start_command = f'cd {working_dir} && newgrp {linux_username}'
+        else:
+            containerName = start_command.replace(STUDENT_NAME_LAB_PARAMETER, linux_username)
+            start_command = f'sudo docker_client_shell_{linux_username}_{containerName}'
+        # Create terminal session
+        latest_terminal = (
+            TerminalSession.query
+            .filter_by(lab_session_id=lab_session.id)
+            .order_by(TerminalSession.last_activity.desc())
+            .first()
         )
-        return jsonify({'message': 'Lab commands executed successfully', 'data': base_result.stdout})
+
+        terminal_session = TerminalSession(
+            session_id=latest_terminal.session_id,
+            user_id=user_id,
+            lab_session_id=lab_session_id,
+            current_directory=lab_session.student_folder or '/tmp'
+        )    
+        handle_linux_start_terminal_console('/tmp', user_linux_name, start_command, latest_terminal.session_id, lab_session, terminal_session)
+
+        return jsonify({'message': 'Lab commands executed successfully', 'data': ''})
     except Exception as e:
         print(f"Error running lab commands: {e}")
         import traceback
@@ -2710,9 +2732,8 @@ def handle_start_terminal(data):
         containerName = start_command.replace(STUDENT_NAME_LAB_PARAMETER, linux_username)
         start_command = f'sudo docker_client_shell_{linux_username}_{containerName}'
     # Create terminal session
-    terminal_session_id = str(uuid.uuid4())
     terminal_session = TerminalSession(
-        session_id=terminal_session_id,
+        session_id=session_id,
         user_id=user_id,
         lab_session_id=lab_session_id,
         current_directory=lab_session.student_folder or '/tmp'
