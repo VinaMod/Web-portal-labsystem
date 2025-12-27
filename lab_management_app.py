@@ -2612,7 +2612,7 @@ def handle_disconnect():
     session_id = request.sid
     
     if 'user' not in session:
-        emit('terminal_error', {'error': 'Not authenticated'})
+        socketio.emit('terminal_error', {'error': 'Not authenticated'})
         return
     
     user_id = session['user']['id']
@@ -2620,7 +2620,7 @@ def handle_disconnect():
     # Get user object
     user = db.session.get(User, user_id)
     if not user:
-        emit('terminal_error', {'error': 'User not found'})
+        socketio.emit('terminal_error', {'error': 'User not found'})
         return
     user_name = get_student_username(user.email)
     print(f"Client disconnected: {session_id}")
@@ -2700,7 +2700,7 @@ def handle_start_terminal(data):
     lab_session_id = data.get('lab_session_id')
     
     if 'user' not in session:
-        emit('terminal_error', {'error': 'Not authenticated'})
+        socketio.emit('terminal_error', {'error': 'Not authenticated'})
         return
     
     user_id = session['user']['id']
@@ -2708,13 +2708,13 @@ def handle_start_terminal(data):
     # Verify lab session
     lab_session = LabSession.query.filter_by(id=lab_session_id, user_id=user_id).first()
     if not lab_session:
-        emit('terminal_error', {'error': 'Lab session not found'})
+        socketio.emit('terminal_error', {'error': 'Lab session not found'})
         return
     
     # Get user object
     user = db.session.get(User, user_id)
     if not user:
-        emit('terminal_error', {'error': 'User not found'})
+        socketio.emit('terminal_error', {'error': 'User not found'})
         return
     labParams = LabParameter.query.filter_by(lab_id=lab_session.lab_id)
     start_command_param = labParams.filter_by(
@@ -2762,8 +2762,8 @@ def handle_start_terminal(data):
 
 {get_prompt(lab_session.student_folder)}"""
         
-        emit('terminal_output', {'data': welcome_msg})
-        emit('terminal_ready', {'status': 'ready'})
+        socketio.emit('terminal_output', {'data': welcome_msg})
+        socketio.emit('terminal_ready', {'status': 'ready'})
     else:
         # Linux: Use pty for real bash session with user isolation
         handle_linux_start_terminal_console(working_dir, linux_username, start_command, session_id, lab_session, terminal_session)
@@ -2825,13 +2825,13 @@ def handle_linux_start_terminal_console(working_dir, linux_username, start_comma
                 )
                 read_thread.start()
                 active_terminals[session_id]['read_thread'] = read_thread
-                emit('terminal_ready', {'status': 'ready'})
+                socketio.emit('terminal_ready', {'status': 'ready'})
                 
     except Exception as e:
         error_msg = f"Failed to start terminal: {e}"
         print(error_msg)
         traceback.print_exc()
-        emit('terminal_error', {'error': error_msg})
+        socketio.emit('terminal_error', {'error': error_msg})
         return
 
 def read_pty_output(session_id, fd):
@@ -2887,7 +2887,7 @@ def handle_terminal_input(data):
     input_data = data.get('data', '')
     
     if session_id not in active_terminals:
-        emit('terminal_error', {'error': 'No active terminal session'})
+        socketio.emit('terminal_error', {'error': 'No active terminal session'})
         return
     
     terminal_info = active_terminals[session_id]
@@ -2930,9 +2930,9 @@ def handle_terminal_input(data):
                     
             except Exception as e:
                 print(f"Error writing to pty: {e}")
-                emit('terminal_error', {'error': f'Failed to write to terminal: {e}'})
+                socketio.emit('terminal_error', {'error': f'Failed to write to terminal: {e}'})
         else:
-            emit('terminal_error', {'error': 'Terminal not ready'})
+            socketio.emit('terminal_error', {'error': 'Terminal not ready'})
 
 def handle_windows_terminal_input(session_id, input_data, terminal_info):
     """Handle terminal input for Windows (command-based mode)"""
@@ -2941,7 +2941,7 @@ def handle_windows_terminal_input(session_id, input_data, terminal_info):
     lab_session = db.session.get(LabSession, terminal_info['lab_session_id'])
     
     if not terminal_session or not lab_session:
-        emit('terminal_error', {'error': 'Terminal session expired'}, room=session_id)
+        socketio.emit('terminal_error', {'error': 'Terminal session expired'}, room=session_id)
         return
     
     # Handle input character by character
@@ -2951,21 +2951,21 @@ def handle_windows_terminal_input(session_id, input_data, terminal_info):
         if command:
             execute_secure_command(session_id, command, terminal_session, lab_session)
         else:
-            emit('terminal_output', {'data': f'\r\n{get_prompt(terminal_session.current_directory)}'}, room=session_id)
+            socketio.emit('terminal_output', {'data': f'\r\n{get_prompt(terminal_session.current_directory)}'}, room=session_id)
         terminal_info['command_buffer'] = ''
         
     elif input_data == '\x7f':  # Backspace
         if terminal_info.get('command_buffer', ''):
             terminal_info['command_buffer'] = terminal_info['command_buffer'][:-1]
-            emit('terminal_output', {'data': '\b \b'}, room=session_id)
+            socketio.emit('terminal_output', {'data': '\b \b'}, room=session_id)
             
     elif input_data == '\x03':  # Ctrl+C
         terminal_info['command_buffer'] = ''
-        emit('terminal_output', {'data': f'^C\r\n{get_prompt(terminal_session.current_directory)}'}, room=session_id)
+        socketio.emit('terminal_output', {'data': f'^C\r\n{get_prompt(terminal_session.current_directory)}'}, room=session_id)
         
     elif input_data and len(input_data) == 1 and ord(input_data) >= 32:  # Printable characters
         terminal_info['command_buffer'] += input_data
-        emit('terminal_output', {'data': input_data}, room=session_id)
+        socketio.emit('terminal_output', {'data': input_data}, room=session_id)
     
     # Update last activity
     try:
@@ -3026,7 +3026,7 @@ def execute_secure_command(socket_session_id, command, terminal_session, lab_ses
     if not is_allowed:
         # Command blocked
         error_msg = f"\r\n🚫 Command blocked: {reason}\r\n"
-        emit('terminal_output', {'data': error_msg}, room=socket_session_id)
+        socketio.emit('terminal_output', {'data': error_msg}, room=socket_session_id)
         command_log.output = error_msg
         command_log.exit_code = 1
     else:
@@ -3034,8 +3034,8 @@ def execute_secure_command(socket_session_id, command, terminal_session, lab_ses
         try:
             # Handle special commands
             if command.lower() in ['clear', 'cls']:
-                emit('terminal_clear', {}, room=socket_session_id)
-                emit('terminal_output', {'data': get_prompt(current_dir)}, room=socket_session_id)
+                socketio.emit('terminal_clear', {}, room=socket_session_id)
+                socketio.emit('terminal_output', {'data': get_prompt(current_dir)}, room=socket_session_id)
                 command_log.output = "Terminal cleared"
                 command_log.exit_code = 0
                 
@@ -3046,7 +3046,7 @@ def execute_secure_command(socket_session_id, command, terminal_session, lab_ses
                     output = f"\r\n{get_prompt(new_dir)}"
                 else:
                     output = f"\r\ncd: directory not accessible or not found\r\n{get_prompt(current_dir)}"
-                emit('terminal_output', {'data': output}, room=socket_session_id)
+                socketio.emit('terminal_output', {'data': output}, room=socket_session_id)
                 command_log.output = output
                 command_log.exit_code = 0 if new_dir != current_dir else 1
                 
@@ -3107,20 +3107,20 @@ def execute_secure_command(socket_session_id, command, terminal_session, lab_ses
                     output = ""
                 
                 full_output = f"\r\n{output}\r\n{get_prompt(current_dir)}"
-                emit('terminal_output', {'data': full_output}, room=socket_session_id)
+                socketio.emit('terminal_output', {'data': full_output}, room=socket_session_id)
                 
                 command_log.output = output
                 command_log.exit_code = result.returncode
                 
         except subprocess.TimeoutExpired:
             error_msg = f"\r\n⏰ Command timed out\r\n{get_prompt(current_dir)}"
-            emit('terminal_output', {'data': error_msg}, room=socket_session_id)
+            socketio.emit('terminal_output', {'data': error_msg}, room=socket_session_id)
             command_log.output = "Command timed out"
             command_log.exit_code = 124
             
         except Exception as e:
             error_msg = f"\r\n❌ Error: {str(e)}\r\n{get_prompt(current_dir)}"
-            emit('terminal_output', {'data': error_msg}, room=socket_session_id)
+            socketio.emit('terminal_output', {'data': error_msg}, room=socket_session_id)
             command_log.output = f"Error: {str(e)}"
             command_log.exit_code = 1
     
