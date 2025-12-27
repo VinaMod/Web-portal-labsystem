@@ -2232,7 +2232,7 @@ def execute_run_command(user_linux_name, run_command, working_directory):
 SCRIPT_TEMPLATE = r"""#!/bin/bash
 exec docker exec -it ${containerName} bash
 """
-def create_student_docker(username, studentId, containerName):
+def     create_student_docker(username, studentId, containerName):
     # 3. Tạo file script riêng
     script_path = f"/usr/local/bin/docker_client_shell_{username}_{containerName}"
     if os.path.exists(script_path):
@@ -2685,7 +2685,18 @@ def handle_start_terminal(data):
     if not user:
         emit('terminal_error', {'error': 'User not found'})
         return
-    
+    labParams = LabParameter.query.filter_by(lab_id=lab_session.lab_id)
+    start_command_param = labParams.filter_by(
+            parameter_name='${dockerExecCommand}'
+    ).first()
+    linux_username = get_student_username(user.email)
+    working_dir = f'/home/{linux_username}' or '/tmp'
+    start_command = start_command_param.parameter_value if start_command_param else None
+    if not start_command:
+        start_command = f'cd {working_dir} && newgrp {linux_username}'
+    else:
+        containerName = start_command.replace(STUDENT_NAME_LAB_PARAMETER, linux_username)
+        start_command = f'sudo docker_client_shell_{linux_username}_{containerName}'
     # Create terminal session
     terminal_session_id = str(uuid.uuid4())
     terminal_session = TerminalSession(
@@ -2723,8 +2734,6 @@ def handle_start_terminal(data):
     else:
         # Linux: Use pty for real bash session with user isolation
         try:
-            linux_username = get_student_username(user.email)
-            working_dir = f'/home/{linux_username}' or '/tmp'
             
             # Fork a pty process
             pid, fd = pty.fork()
@@ -2746,12 +2755,13 @@ def handle_start_terminal(data):
                     # os.execvp('sudo', ['sudo', '-u', linux_username, '/bin/bash'])
                     # child process, vẫn ở folder Python hiện tại
                     
+                    print("============ START TERMINAL COMMAND: ", start_command)
                     os.execvp('sudo', [
                         'sudo',
                         '-u', linux_username,
                         '/bin/bash',
                         '-c',
-                        f'cd {working_dir} && newgrp {linux_username}'
+                        start_command
                     ])
                 except Exception as e:
                     print(f"Child process error: {e}", flush=True)
