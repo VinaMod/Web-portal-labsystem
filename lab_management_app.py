@@ -1780,7 +1780,7 @@ def start_lab(lab_id):
                 print(f"Raw run command: {command}")
                 replaced_command = replace_lab_parameters(lab, command, user)
                 print(f"Executing run command: {replaced_command}")
-                execute_run_command(user_linux_name, replaced_command, lab_session.student_folder)
+                execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, False)
         
         return jsonify({
             'message': 'Lab started successfully',
@@ -1860,7 +1860,7 @@ def run_lab_commands(lab_session_id):
                 print(f"Raw run command: {command}")
                 replaced_command = replace_lab_parameters(lab, command, user)
                 print(f"Executing run command: {replaced_command}")
-                execute_run_command(user_linux_name, replaced_command, lab_session.student_folder)
+                execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, True)
 
         print("======= SEND START AND READY EVENT")  
         socketio.emit('terminal_ready', {'status': 'ready'})
@@ -2164,7 +2164,7 @@ def replace_lab_parameters(lab, command, user):
     
     return replaced_command
 
-def execute_run_command(user_linux_name, run_command, working_directory):
+def execute_run_command(user_linux_name, run_command, working_directory, clean_docker_only):
     """Execute run command when lab starts"""
     try:
         # Dùng newgrp -c "<command>" để chạy command với group mới
@@ -2177,7 +2177,7 @@ def execute_run_command(user_linux_name, run_command, working_directory):
             text=True,
             timeout=500
         )
-        cleanup_docker_resources(user_linux_name)
+        cleanup_docker_resources(user_linux_name, clean_docker_only)
         last_folder = os.path.basename(working_directory)  # ví dụ: lab-1
         expected_cmd = f"rebuild {last_folder}"
         
@@ -2603,7 +2603,7 @@ def handle_disconnect():
     user_name = get_student_username(user.email)
     print(f"Client disconnected: {session_id}")
     print("=============== START CLEAN UP DOCKER OF " , user_name)
-    cleanup_docker_resources(user_name)
+    cleanup_docker_resources(user_name, False)
     print("=============== END CLEAN UP DOCKER OF " , user_name)
 
     # Clean up terminal session and kill pty process
@@ -2640,7 +2640,7 @@ def handle_disconnect():
             del active_terminals[session_id]
 import subprocess
 
-def cleanup_docker_resources(student_name):
+def cleanup_docker_resources(student_name, clean_docker_only):
     try:
         # Escape student_name để tránh lỗi shell injection
         student_name = student_name.replace("'", "")
@@ -2836,12 +2836,12 @@ def read_pty_output(session_id, fd):
                         else:
                             # EOF - process died
                             print(f"PTY EOF for session {session_id}")
-                            break
+                            # break
                     except OSError as e:
                         if e.errno == 5:  # EIO - process terminated
                             print(f"PTY process terminated for session {session_id}")
-                            break
-                        raise
+                        #     break
+                        # raise
                         
             except Exception as e:
                 print(f"Error reading from pty: {e}")
