@@ -1862,7 +1862,7 @@ def run_lab_commands(lab_session_id):
                 print(f"Executing run command: {replaced_command}")
                 execute_run_command(user_linux_name, replaced_command, lab_session.student_folder)
 
-        emit('start_terminal', { "lab_session_id": lab_session.id })
+        emit('start_terminal', {'lab_session_id': lab_session.id })
         emit('terminal_ready', {'status': 'ready'})
         return jsonify({'message': 'Lab commands executed successfully'})
     except Exception as e:
