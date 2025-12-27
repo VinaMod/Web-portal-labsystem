@@ -1861,7 +1861,8 @@ def run_lab_commands(lab_session_id):
                 replaced_command = replace_lab_parameters(lab, command, user)
                 print(f"Executing run command: {replaced_command}")
                 execute_run_command(user_linux_name, replaced_command, lab_session.student_folder)
-        
+
+        socketio.emit('terminal_output', { lab_session_id: lab_session.id })
         return jsonify({'message': 'Lab commands executed successfully'})
     except Exception as e:
         print(f"Error running lab commands: {e}")
