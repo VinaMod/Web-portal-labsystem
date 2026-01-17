@@ -1751,8 +1751,12 @@ def start_lab(lab_id):
     port = get_free_port(8000, 10000)
     if not port:
         raise ValueError("No available port for lab!")
+    client_port = get_free_port(50000, 60000)
+    if not client_port:
+        raise ValueError("No available port for lab!")
     print("===================== WEB TEST RUN IN PORT ", port)
     lab_session.success_start_lab_output = lab.output_result.replace("${webTestPort}", str(port))
+    lab_session.success_start_lab_output = lab.output_result.replace("${clientTestPort}", str(client_port))
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
     print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
@@ -1762,7 +1766,7 @@ def start_lab(lab_id):
     
         # Apply parameter file modifications if specified
         if lab.lab_parameters and lab_session.student_folder:
-            apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name, port)
+            apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name, port, client_port)
         
         # # Execute build command if specified
         # if lab.build_command and lab_session.student_folder:
@@ -1831,8 +1835,12 @@ def run_lab_commands(lab_session_id):
     port = get_free_port(8000, 10000)
     if not port:
         raise ValueError("No available port for lab!")
+    client_port = get_free_port(50000, 60000)
+    if not client_port:
+        raise ValueError("No available port for lab!")
     print("===================== WEB TEST RUN IN PORT ", port)
     lab_session.success_start_lab_output = lab.output_result.replace("${webTestPort}", str(port))
+    lab_session.success_start_lab_output = lab.output_result.replace("${clientTestPort}", str(client_port))
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
     print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
@@ -1842,7 +1850,7 @@ def run_lab_commands(lab_session_id):
     
         # Apply parameter file modifications if specified
         if lab.lab_parameters and lab_session.student_folder:
-            apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name, port)
+            apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name, port, client_port)
         
         # # Execute build command if specified
         # if lab.build_command and lab_session.student_folder:
@@ -1899,7 +1907,7 @@ def run_lab_commands(lab_session_id):
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500    
 
-def apply_parameter_file_modifications(lab, student_folder, user_linux_name, port):
+def apply_parameter_file_modifications(lab, student_folder, user_linux_name, port, client_port):
     """
     Modify files with parameter values when file_path is specified
     and rename file if file_path contains STUDENT_NAME_LAB_PARAMETER
@@ -1935,6 +1943,7 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
             value = value.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_", ""))
             value = value.replace("${webTestPort}", str(port))
             value = value.replace("${dbTestPort}", str(db_port))
+            value = value.replace("${clientTestPort}", str(client_port))
             if "${dockerExecCommand}" in param.parameter_name:
                 create_student_docker(user_linux_name, user_linux_name, value)
                 continue
