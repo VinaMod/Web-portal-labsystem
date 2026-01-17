@@ -1869,8 +1869,6 @@ def run_lab_commands(lab_session_id):
         linux_username = get_student_username(user.email)
         working_dir = f'/home/{linux_username}' or '/tmp'
         values = json.loads(start_command_param.parameter_values) if start_command_param else None
-        for value in values:
-            print("================= PARAMETERS: ", value)
         start_command = values[0] if values else None
         needToConnectContainer = True if start_command else False
         if not start_command:
@@ -2724,8 +2722,6 @@ def handle_start_terminal(data):
     linux_username = get_student_username(user.email)
     working_dir = f'/home/{linux_username}' or '/tmp'
     values = json.loads(start_command_param.parameter_values) if start_command_param else None
-    for value in values:
-        print("================= PARAMETERS: ", value)
     start_command = values[0] if values else None
     needToConnectContainer = True if start_command else False
     if not start_command:
