@@ -1766,7 +1766,7 @@ def start_lab(lab_id):
     
         # Apply parameter file modifications if specified
         if lab.lab_parameters and lab_session.student_folder:
-            apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name, port, client_port)
+            apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name, port, client_port, user.email)
         
         # # Execute build command if specified
         # if lab.build_command and lab_session.student_folder:
@@ -1850,7 +1850,7 @@ def run_lab_commands(lab_session_id):
     
         # Apply parameter file modifications if specified
         if lab.lab_parameters and lab_session.student_folder:
-            apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name, port, client_port)
+            apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name, port, client_port, user.email)
         
         # # Execute build command if specified
         # if lab.build_command and lab_session.student_folder:
@@ -1907,7 +1907,7 @@ def run_lab_commands(lab_session_id):
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500    
 
-def apply_parameter_file_modifications(lab, student_folder, user_linux_name, port, client_port):
+def apply_parameter_file_modifications(lab, student_folder, user_linux_name, port, client_port, email):
     """
     Modify files with parameter values when file_path is specified
     and rename file if file_path contains STUDENT_NAME_LAB_PARAMETER
@@ -1940,6 +1940,7 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
         if param.values_list:
             value = random.choice(param.values_list)
             value = value.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
+            value = value.replace("${email}", email)
             value = value.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_", ""))
             value = value.replace("${webTestPort}", str(port))
             value = value.replace("${dbTestPort}", str(db_port))
