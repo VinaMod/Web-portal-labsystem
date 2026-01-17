@@ -1872,6 +1872,7 @@ def run_lab_commands(lab_session_id):
         for value in values:
             print("================= PARAMETERS: ", value)
         start_command = values[0] if values else None
+        needToConnectContainer = True if start_command else False
         if not start_command:
             start_command = f'cd {working_dir} && newgrp {linux_username}'
         else:
@@ -1891,7 +1892,7 @@ def run_lab_commands(lab_session_id):
             lab_session_id=lab_session_id,
             current_directory=lab_session.student_folder or '/tmp'
         )    
-        handle_linux_start_terminal_console('/tmp', user_linux_name, start_command, latest_terminal.session_id, lab_session, terminal_session)
+        handle_linux_start_terminal_console('/tmp', user_linux_name, start_command, latest_terminal.session_id, lab_session, terminal_session, needToConnectContainer)
 
         return jsonify({'message': 'Lab commands executed successfully', 'data': ''})
     except Exception as e:
@@ -2726,6 +2727,7 @@ def handle_start_terminal(data):
     for value in values:
         print("================= PARAMETERS: ", value)
     start_command = values[0] if values else None
+    needToConnectContainer = True if start_command else False
     if not start_command:
         start_command = f'cd {working_dir} && newgrp {linux_username}'
     else:
@@ -2766,8 +2768,8 @@ def handle_start_terminal(data):
         socketio.emit('terminal_ready', {'status': 'ready'})
     else:
         # Linux: Use pty for real bash session with user isolation
-        handle_linux_start_terminal_console(working_dir, linux_username, start_command, session_id, lab_session, terminal_session)
-def handle_linux_start_terminal_console(working_dir, linux_username, start_command, session_id, lab_session, terminal_session):
+        handle_linux_start_terminal_console(working_dir, linux_username, start_command, session_id, lab_session, terminal_session, needToConnectContainer)
+def handle_linux_start_terminal_console(working_dir, linux_username, start_command, session_id, lab_session, terminal_session, needToConnectContainer):
     try:
             
          # Fork a pty process
@@ -2789,14 +2791,14 @@ def handle_linux_start_terminal_console(working_dir, linux_username, start_comma
                     # # Execute bash as the student user
                     # os.execvp('sudo', ['sudo', '-u', linux_username, '/bin/bash'])
                     # child process, vẫn ở folder Python hiện tại
-                    
-                os.execvp('sudo', [
-                        'sudo',
-                        '-u', linux_username,
-                        '/bin/bash',
-                        '-c',
-                        start_command
-                    ])
+                if needToConnectContainer:
+                    os.execvp('sudo', [
+                            'sudo',
+                            '-u', linux_username,
+                            '/bin/bash',
+                            '-c',
+                            start_command
+                        ])
             except Exception as e:
                     print(f"Child process error: {e}", flush=True)
                     os._exit(1)
