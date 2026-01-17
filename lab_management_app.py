@@ -1756,7 +1756,7 @@ def start_lab(lab_id):
         raise ValueError("No available port for lab!")
     print("===================== WEB TEST RUN IN PORT ", port)
     lab_session.success_start_lab_output = lab.output_result.replace("${webTestPort}", str(port))
-    lab_session.success_start_lab_output = lab.output_result.replace("${clientTestPort}", str(client_port))
+    lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${clientTestPort}", str(client_port))
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
     print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
@@ -1840,7 +1840,7 @@ def run_lab_commands(lab_session_id):
         raise ValueError("No available port for lab!")
     print("===================== WEB TEST RUN IN PORT ", port)
     lab_session.success_start_lab_output = lab.output_result.replace("${webTestPort}", str(port))
-    lab_session.success_start_lab_output = lab.output_result.replace("${clientTestPort}", str(client_port))
+    lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${clientTestPort}", str(client_port))
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
     print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
@@ -2912,7 +2912,7 @@ def handle_terminal_input(data):
             try:
                 # Write input directly to pty
                 print("========== EXE COMMAND ", input_data.encode('utf-8'))
-                
+
                 os.write(pty_fd, input_data.encode('utf-8'))
                 
                 # Update last activity
