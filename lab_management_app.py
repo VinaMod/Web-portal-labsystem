@@ -2898,6 +2898,9 @@ def handle_terminal_input(data):
         return
     
     terminal_info = active_terminals[session_id]
+    if not terminal_info:
+        print("CHANNEL NOT ACTIVE")
+        return
     # Check if Windows or Linux mode
     if terminal_info.get('is_windows', False):
         # Windows mode - command-based execution
