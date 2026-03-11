@@ -831,6 +831,7 @@ def check_lab_template(lab_id):
 
 # Admin Routes
 @app.route('/admin')
+@app.route('/admin/')
 @admin_required
 def admin_dashboard():
     """Admin dashboard"""
