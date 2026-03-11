@@ -652,6 +652,7 @@ def dashboard():
                 'name': lab.name,
                 'description': lab.description,
                 'flow_type': getattr(lab, 'flow_type', 'LABTAINER'),
+                'lab_session_id': lab_session.id if lab_session else None,
                 'deadline': lab.deadline,
                 'difficulty': lab.difficulty,
                 'estimated_duration': lab.estimated_duration,
@@ -1807,7 +1808,7 @@ def start_lab(lab_id):
             'lab_id': lab_id,
             'lab_session_id': lab_session.id,
             'flow_type': flow_type,
-            'redirect_url': f'/lab/{lab_id}/terminal?flow_type={flow_type}'
+            'redirect_url': f'/lab/{lab_session.id}/terminal?flow_type={flow_type}'
         })
     except Exception as e:
         db.session.rollback()
@@ -2360,14 +2361,22 @@ def execute_build_command(user_linux_name, build_command, working_directory):
         print(f"Error executing build command: {e}")
         return False
 
-@app.route('/lab/<int:lab_id>/terminal')
+@app.route('/lab/<int:lab_session_id>/terminal')
 @login_required
-def lab_terminal(lab_id):
+def lab_terminal(lab_session_id):
     """Display lab terminal interface"""
     user_id = session['user']['id']
     
-    # Get lab session for current user and lab
-    lab_session = LabSession.query.filter_by(lab_id=lab_id, user_id=user_id).first()
+    # Canonical: treat path param as lab_session_id (keeps routing consistent with /api/lab/<lab_session_id>).
+    lab_session = LabSession.query.filter_by(id=lab_session_id, user_id=user_id).first()
+
+    # Backward-compat: older links may pass lab_id here; if so redirect to canonical URL.
+    if not lab_session:
+        legacy = LabSession.query.filter_by(lab_id=lab_session_id, user_id=user_id).first()
+        if legacy:
+            args = request.args.to_dict(flat=True)
+            return redirect(url_for('lab_terminal', lab_session_id=legacy.id, **args))
+
     if not lab_session:
         flash('Lab session not found. Please start the lab first.', 'error')
         return redirect(url_for('dashboard'))
