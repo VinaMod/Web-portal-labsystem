@@ -708,6 +708,21 @@
               </div>
 
               <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="lab-flow-type" class="form-label"
+                    >Flow Type</label
+                  >
+                  <select class="form-select" id="lab-flow-type">
+                    <option value="LABTAINER" selected>LABTAINER</option>
+                    <option value="CUSTOM">CUSTOM</option>
+                  </select>
+                  <small class="text-muted"
+                    >LABTAINER routes to backend A/B, CUSTOM routes to backend C</small
+                  >
+                </div>
+              </div>
+
+              <div class="row">
                 <div class="col-md-3 mb-3">
                   <label for="lab-max-score" class="form-label"
                     >Max Score</label
@@ -1475,6 +1490,7 @@
         document.getElementById("labModalTitle").textContent = "Create New Lab";
         document.getElementById("labForm").reset();
         document.getElementById("lab-id").value = "";
+        document.getElementById("lab-flow-type").value = "LABTAINER";
         document.getElementById("parameters-container").innerHTML = "";
         parameterCount = 0;
 
@@ -1500,6 +1516,10 @@
           lab.description || "";
         document.getElementById("lab-template-folder").value =
           lab.template_folder;
+        document.getElementById("lab-flow-type").value =
+          (lab.flow_type || "LABTAINER").toString().toUpperCase() === "CUSTOM"
+            ? "CUSTOM"
+            : "LABTAINER";
         document.getElementById("lab-difficulty").value = lab.difficulty;
         document.getElementById("lab-max-score").value = lab.max_score;
         document.getElementById("lab-minimum-score").value =
@@ -2007,6 +2027,7 @@
           name: document.getElementById("lab-name").value,
           description: document.getElementById("lab-description").value,
           template_folder: document.getElementById("lab-template-folder").value,
+          flow_type: document.getElementById("lab-flow-type").value,
           accessible_resources: resources,
           build_command: document.getElementById("lab-build-command").value,
           run_commands: document.getElementById("lab-run-command").value,

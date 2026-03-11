@@ -615,21 +615,21 @@
                 {% if lab.status == 'not_started' %}
                 <button
                   class="btn btn-lab btn-start"
-                  onclick="startLab({{ lab.id }})"
+                  onclick="startLab({{ lab.id }}, {{ (lab.flow_type or 'LABTAINER')|tojson }})"
                 >
                   <i class="fas fa-play me-1"></i>Start Lab
                 </button>
                 {% elif lab.status == 'in_progress' %}
                 <button
                   class="btn btn-lab btn-continue"
-                  onclick="continueLab({{ lab.id }})"
+                  onclick="continueLab({{ lab.id }}, {{ (lab.flow_type or 'LABTAINER')|tojson }})"
                 >
                   <i class="fas fa-play me-1"></i>Continue
                 </button>
                 {% elif lab.status in ['completed', 'submitted'] %}
                 <button
                   class="btn btn-lab btn-review"
-                  onclick="reviewLab({{ lab.id }})"
+                  onclick="reviewLab({{ lab.id }}, {{ (lab.flow_type or 'LABTAINER')|tojson }})"
                 >
                   <i class="fas fa-eye me-1"></i>Review
                 </button>
@@ -727,7 +727,13 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
       // Lab management functions
-      function startLab(labId) {
+      function normalizeFlowType(flowType) {
+        const ft = (flowType || "LABTAINER").toString().toUpperCase();
+        return ft === "CUSTOM" ? "CUSTOM" : "LABTAINER";
+      }
+
+      function startLab(labId, flowType) {
+        const ft = normalizeFlowType(flowType);
         // Show loading screen
         const loadingScreen = document.getElementById("loadingScreen");
         loadingScreen.style.display = "flex";
@@ -736,6 +742,7 @@
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "X-FLOW-TYPE": ft,
           },
         })
           .then((response) => response.json())
@@ -745,7 +752,10 @@
               alert("Error: " + data.error);
             } else {
               // Keep loading screen visible and redirect
-              window.location.href = `/lab/${labId}/terminal`;
+              const redirectUrl =
+                data.redirect_url ||
+                `/lab/${labId}/terminal?flow_type=${encodeURIComponent(ft)}`;
+              window.location.href = redirectUrl;
             }
           })
           .catch((error) => {
@@ -755,18 +765,24 @@
           });
       }
 
-      function continueLab(labId) {
+      function continueLab(labId, flowType) {
+        const ft = normalizeFlowType(flowType);
         // Show loading screen
         const loadingScreen = document.getElementById("loadingScreen");
         loadingScreen.style.display = "flex";
 
         // Same as start lab - redirect to terminal
-        window.location.href = `/lab/${labId}/terminal`;
+        window.location.href = `/lab/${labId}/terminal?flow_type=${encodeURIComponent(
+          ft
+        )}`;
       }
 
-      function reviewLab(labId) {
+      function reviewLab(labId, flowType) {
+        const ft = normalizeFlowType(flowType);
         // Redirect to lab terminal in read-only mode
-        window.location.href = `/lab/${labId}/terminal?mode=review`;
+        window.location.href = `/lab/${labId}/terminal?mode=review&flow_type=${encodeURIComponent(
+          ft
+        )}`;
       }
 
       // Course enrollment functions

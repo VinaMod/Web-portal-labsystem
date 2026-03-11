@@ -110,6 +110,26 @@ def migrate_database():
             # Check run_command column in labs table
             if 'labs' in all_tables:
                 labs_cols = get_table_columns(db.engine, 'labs')
+
+                # Check flow_type column in labs table (used for Nginx routing)
+                if 'flow_type' not in labs_cols:
+                    print("   ⚠️  flow_type column missing in labs table")
+                    print("      Attempting to add flow_type column...")
+                    try:
+                        from sqlalchemy import text
+                        db.session.execute(text(
+                            "ALTER TABLE labs ADD COLUMN flow_type VARCHAR(20) NOT NULL DEFAULT 'LABTAINER'"
+                        ))
+                        db.session.commit()
+                        print("      ✅ flow_type column added successfully")
+                        labs_cols = get_table_columns(db.engine, 'labs')
+                    except Exception as e:
+                        db.session.rollback()
+                        print(f"      ❌ Failed to add flow_type column automatically: {e}")
+                        print("      You may need to run manually: ALTER TABLE labs ADD COLUMN flow_type VARCHAR(20) NOT NULL DEFAULT 'LABTAINER';")
+                else:
+                    print("   ✅ flow_type column exists in labs table")
+
                 if 'run_command' in labs_cols:
                     print("   ✅ run_command column exists in labs table")
                 else:

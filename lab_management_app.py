@@ -146,6 +146,8 @@ class Lab(db.Model):
     name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
     template_folder = db.Column(db.String(255), nullable=False)
+    # Routing hint for Nginx: LABTAINER -> backend A/B, CUSTOM -> backend C
+    flow_type = db.Column(db.String(20), nullable=False, default='LABTAINER')
     accessible_resources = db.Column(db.Text)  # JSON array
     build_command = db.Column(db.Text)
     order_index = db.Column(db.Integer, default=0)
@@ -649,6 +651,7 @@ def dashboard():
                 'id': lab.id,
                 'name': lab.name,
                 'description': lab.description,
+                'flow_type': getattr(lab, 'flow_type', 'LABTAINER'),
                 'deadline': lab.deadline,
                 'difficulty': lab.difficulty,
                 'estimated_duration': lab.estimated_duration,
@@ -1084,6 +1087,7 @@ def admin_labs():
         'course_name': l.course.name,
         'description': l.description,
         'template_folder': l.template_folder,
+        'flow_type': getattr(l, 'flow_type', 'LABTAINER'),
         'accessible_resources': l.accessible_resources,
         'build_command': l.build_command,
         'run_commands': l.run_commands,
@@ -1113,12 +1117,17 @@ def admin_labs():
 def create_lab():
     """Create new lab"""
     data = request.json
+
+    flow_type = (data.get('flow_type') or 'LABTAINER').upper()
+    if flow_type not in ('LABTAINER', 'CUSTOM'):
+        flow_type = 'LABTAINER'
     
     lab = Lab(
         course_id=data['course_id'],
         name=data['name'],
         description=data.get('description', ''),
         template_folder=data['template_folder'],
+        flow_type=flow_type,
         accessible_resources=json.dumps(data.get('accessible_resources', [])),
         build_command=data.get('build_command', ''),
         run_commands=json.dumps(data.get('run_commands', [])),
@@ -1171,6 +1180,10 @@ def update_lab(lab_id):
         lab.description = data['description']
     if 'template_folder' in data:
         lab.template_folder = data['template_folder']
+    if 'flow_type' in data:
+        flow_type = (data.get('flow_type') or 'LABTAINER').upper()
+        if flow_type in ('LABTAINER', 'CUSTOM'):
+            lab.flow_type = flow_type
     if 'accessible_resources' in data:
         lab.accessible_resources = json.dumps(data['accessible_resources'])
     if 'build_command' in data:
@@ -1784,10 +1797,16 @@ def start_lab(lab_id):
                 print(f"Executing run command: {replaced_command}")
                 execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, False)
         
+        flow_type = (getattr(lab, 'flow_type', 'LABTAINER') or 'LABTAINER').upper()
+        if flow_type not in ('LABTAINER', 'CUSTOM'):
+            flow_type = 'LABTAINER'
+
         return jsonify({
             'message': 'Lab started successfully',
+            'lab_id': lab_id,
             'lab_session_id': lab_session.id,
-            'redirect_url': f'/lab/{lab_session.id}/terminal'
+            'flow_type': flow_type,
+            'redirect_url': f'/lab/{lab_id}/terminal?flow_type={flow_type}'
         })
     except Exception as e:
         db.session.rollback()
@@ -3306,6 +3325,22 @@ def create_sample_templates():
 
 if __name__ == '__main__':
     with app.app_context():
+        # Best-effort schema patch for older databases (no Alembic in this repo).
+        try:
+            from sqlalchemy import inspect, text
+            inspector = inspect(db.engine)
+            if 'labs' in inspector.get_table_names():
+                labs_cols = [col['name'] for col in inspector.get_columns('labs')]
+                if 'flow_type' not in labs_cols:
+                    db.session.execute(text(
+                        "ALTER TABLE labs ADD COLUMN flow_type VARCHAR(20) NOT NULL DEFAULT 'LABTAINER'"
+                    ))
+                    db.session.commit()
+        except Exception as e:
+            # Don't block startup; user can run setup_mysql.py migrate or ALTER manually.
+            print(f"Warning: could not ensure labs.flow_type column: {e}")
+            db.session.rollback()
+
         db.create_all()
         
         # Create sample data for testing

@@ -147,6 +147,7 @@ CREATE TABLE `labs` (
   `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `description` text COLLATE utf8mb4_unicode_ci,
   `template_folder` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `flow_type` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'LABTAINER',
   `accessible_resources` text COLLATE utf8mb4_unicode_ci,
   `build_command` text COLLATE utf8mb4_unicode_ci,
   `order_index` int DEFAULT NULL,

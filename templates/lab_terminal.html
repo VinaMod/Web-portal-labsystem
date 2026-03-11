@@ -644,8 +644,14 @@
 
     <script>
               // Initialize components
-              const socket = io();
               const labSessionId = {{ lab_session.id }};
+              const FLOW_TYPE = new URLSearchParams(window.location.search).get('flow_type') || {{ (lab_session.lab.flow_type or 'LABTAINER')|tojson }};
+              const socket = io({
+                  query: {
+                      flow_type: FLOW_TYPE,
+                      lab_session_id: String(labSessionId),
+                  },
+              });
 
               // Terminal configuration
               const terminal = new Terminal({
@@ -969,6 +975,7 @@
                               method: 'POST',
                               headers: {
                                   'Content-Type': 'application/json',
+                                  'X-FLOW-TYPE': FLOW_TYPE,
                               },
                               body: JSON.stringify({
                                   checkpoint_answers: checkpointAnswers,
@@ -1083,7 +1090,8 @@
                       const response = await fetch(`/api/lab/{{ lab_session.id }}/run-commands`, {
                           method: 'POST',
                           headers: {
-                              'Content-Type': 'application/json'
+                              'Content-Type': 'application/json',
+                              'X-FLOW-TYPE': FLOW_TYPE,
                           }
                       });
 
