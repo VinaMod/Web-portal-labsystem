@@ -1876,10 +1876,20 @@ def run_lab_commands(lab_session_id):
     if not client_port:
         raise ValueError("No available port for lab!")
     print("===================== WEB TEST RUN IN PORT ", port)
-    lab_session.success_start_lab_output = lab.output_result.replace("${webTestPort}", str(port))
+    output_template = lab.output_result or ""
+    lab_session.success_start_lab_output = output_template.replace("${webTestPort}", str(port))
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${clientTestPort}", str(client_port))
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
+
+    flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
+    base_url = request.host_url.rstrip('/')
+    web_url = f"{base_url}/lab/{lab_session.id}/web/{port}/?flow_type={flow_type}&lab_id={lab_id}"
+    lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${webTestUrl}", web_url)
+    lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(
+        "${clientTestUrl}",
+        f"{base_url}/lab/{lab_session.id}/web/{client_port}/?flow_type={flow_type}&lab_id={lab_id}"
+    )
     print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
     try:
         db.session.commit()
@@ -1937,7 +1947,15 @@ def run_lab_commands(lab_session_id):
         )    
         handle_linux_start_terminal_console('/tmp', user_linux_name, start_command, latest_terminal.session_id, lab_session, terminal_session, needToConnectContainer)
 
-        return jsonify({'message': 'Lab commands executed successfully', 'data': ''})
+        return jsonify({
+            'message': 'Lab commands executed successfully',
+            'data': '',
+            'lab_id': lab_id,
+            'lab_session_id': lab_session.id,
+            'flow_type': flow_type,
+            'web_url': web_url,
+            'web_proxy_url': f'/lab/{lab_session.id}/web/{port}/?flow_type={flow_type}&lab_id={lab_id}'
+        })
     except Exception as e:
         print(f"Error running lab commands: {e}")
         import traceback
