@@ -1788,9 +1788,9 @@ def start_lab(lab_id):
 
         flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
         base_url = request.host_url.rstrip('/')
-        web_url = f"{base_url}/lab/{lab_session.id}/web/{port}/?flow_type={flow_type}&lab_id={lab_id}"
+        web_url = f"{base_url}/vul-lab/{lab_session.id}/web/{port}/?flow_type={flow_type}&lab_id={lab_id}"
         lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${webTestUrl}", web_url)
-        lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${clientTestUrl}", f"{base_url}/lab/{lab_session.id}/web/{client_port}/?flow_type={flow_type}")
+        lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${clientTestUrl}", f"{base_url}/vul-lab/{lab_session.id}/web/{client_port}/?flow_type={flow_type}")
 
         print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
 
@@ -1884,7 +1884,7 @@ def run_lab_commands(lab_session_id):
 
     flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
     base_url = request.host_url.rstrip('/')
-    web_url = f"{base_url}/lab/{lab_session.id}/web/{port}/?flow_type={flow_type}&lab_id={lab_id}"
+    web_url = f"{base_url}/vul-lab/{lab_session.id}/web/{port}/?flow_type={flow_type}&lab_id={lab_id}"
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${webTestUrl}", web_url)
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(
         "${clientTestUrl}",
