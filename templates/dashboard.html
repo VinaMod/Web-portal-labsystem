@@ -732,8 +732,7 @@
         return ft === "CUSTOM" ? "CUSTOM" : "LABTAINER";
       }
 
-      function startLab(labId, flowType) {
-        const ft = normalizeFlowType(flowType);
+      function startLab(labId) {
         // Show loading screen
         const loadingScreen = document.getElementById("loadingScreen");
         loadingScreen.style.display = "flex";
@@ -742,10 +741,30 @@
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-FLOW-TYPE": ft,
           },
         })
-          .then((response) => response.json())
+          .then(async (response) => {
+            const contentType = response.headers.get("content-type") || "";
+            const bodyText = await response.text();
+            if (!contentType.includes("application/json")) {
+              throw new Error(
+                `Non-JSON response (${response.status}): ${bodyText.slice(
+                  0,
+                  200
+                )}`
+              );
+            }
+            try {
+              return JSON.parse(bodyText);
+            } catch (e) {
+              throw new Error(
+                `Invalid JSON (${response.status}, content-type=${contentType}): ${bodyText.slice(
+                  0,
+                  200
+                )}`
+              );
+            }
+          })
           .then((data) => {
             if (data.error) {
               loadingScreen.style.display = "none";
@@ -754,7 +773,9 @@
               // Keep loading screen visible and redirect
               const redirectUrl =
                 data.redirect_url ||
-                `/lab/${labId}/terminal?flow_type=${encodeURIComponent(ft)}`;
+                `/lab/${labId}/terminal?flow_type=${encodeURIComponent(
+                  normalizeFlowType(data.flow_type)
+                )}`;
               window.location.href = redirectUrl;
             }
           })

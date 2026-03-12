@@ -301,6 +301,9 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user' not in session:
+            # API calls should return JSON (not an HTML redirect) so the frontend can handle it cleanly.
+            if request.path.startswith('/api/'):
+                return jsonify({'error': 'Not authenticated'}), 401
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -1732,10 +1735,11 @@ def start_lab(lab_id):
     # Get lab and verify user enrollment
     lab = db.session.get(Lab, lab_id)
     user = User.query.filter_by(id=user_id).first()
-    user_linux_name = get_student_username(user.email)
-    print("PREPARE FOR LABS ", lab.name)
     if not lab:
         return jsonify({'error': 'Lab not found'}), 404
+
+    print("PREPARE FOR LABS ", lab.name)
+    user_linux_name = get_student_username(user.email) if user and user.email else f"student_{user_id}"
     
     enrollment = Enrollment.query.filter_by(
         user_id=user_id, course_id=lab.course_id, status='active'
@@ -1762,20 +1766,23 @@ def start_lab(lab_id):
         lab_session.status = 'in_progress'
         lab_session.started_at = datetime.utcnow()
     
-    lab_session.last_accessed = datetime.utcnow()
-    port = get_free_port(8000, 10000)
-    if not port:
-        raise ValueError("No available port for lab!")
-    client_port = get_free_port(50000, 60000)
-    if not client_port:
-        raise ValueError("No available port for lab!")
-    print("===================== WEB TEST RUN IN PORT ", port)
-    lab_session.success_start_lab_output = lab.output_result.replace("${webTestPort}", str(port))
-    lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${clientTestPort}", str(client_port))
-    lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
-    lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
-    print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
     try:
+        lab_session.last_accessed = datetime.utcnow()
+        port = get_free_port(8000, 10000)
+        if not port:
+            raise ValueError("No available port for lab!")
+        client_port = get_free_port(50000, 60000)
+        if not client_port:
+            raise ValueError("No available port for lab!")
+
+        print("===================== WEB TEST RUN IN PORT ", port)
+        output_template = lab.output_result or ""
+        lab_session.success_start_lab_output = output_template.replace("${webTestPort}", str(port))
+        lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${clientTestPort}", str(client_port))
+        lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
+        lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
+        print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
+
         db.session.commit()
         print("PREPARE FOR LABS ", lab.name)
     
