@@ -61,6 +61,10 @@ app.config['GOOGLE_CLIENT_SECRET'] = os.getenv('GOOGLE_CLIENT_SECRET')
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+def _normalize_flow_type(flow_type):
+    ft = (flow_type or "LABTAINER").strip().upper()
+    return ft if ft in ("LABTAINER", "CUSTOM") else "LABTAINER"
 oauth = OAuth(app)
 
 # Lab Environment Config
@@ -1737,7 +1741,7 @@ def start_lab(lab_id):
     user = User.query.filter_by(id=user_id).first()
     if not lab:
         return jsonify({'error': 'Lab not found'}), 404
-
+    
     print("PREPARE FOR LABS ", lab.name)
     user_linux_name = get_student_username(user.email) if user and user.email else f"student_{user_id}"
     
@@ -1806,9 +1810,7 @@ def start_lab(lab_id):
                 print(f"Executing run command: {replaced_command}")
                 execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, False)
         
-        flow_type = (getattr(lab, 'flow_type', 'LABTAINER') or 'LABTAINER').upper()
-        if flow_type not in ('LABTAINER', 'CUSTOM'):
-            flow_type = 'LABTAINER'
+        flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
 
         return jsonify({
             'message': 'Lab started successfully',

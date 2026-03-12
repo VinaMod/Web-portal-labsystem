@@ -732,15 +732,17 @@
         return ft === "CUSTOM" ? "CUSTOM" : "LABTAINER";
       }
 
-      function startLab(labId) {
+      function startLab(labId, flowType) {
+        const ft = normalizeFlowType(flowType);
         // Show loading screen
         const loadingScreen = document.getElementById("loadingScreen");
         loadingScreen.style.display = "flex";
 
-        fetch(`/api/start_lab/${labId}`, {
+        fetch(`/api/start_lab/${labId}?flow_type=${encodeURIComponent(ft)}`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "X-FLOW-TYPE": ft,
           },
         })
           .then(async (response) => {
@@ -766,6 +768,7 @@
             }
           })
           .then((data) => {
+            debugger;
             if (data.error) {
               loadingScreen.style.display = "none";
               alert("Error: " + data.error);
@@ -773,8 +776,8 @@
               // Keep loading screen visible and redirect
               const redirectUrl =
                 data.redirect_url ||
-                `/lab/${labId}/terminal?flow_type=${encodeURIComponent(
-                  normalizeFlowType(data.flow_type)
+                `/lab/${data.lab_session_id || labId}/terminal?flow_type=${encodeURIComponent(
+                  ft
                 )}`;
               window.location.href = redirectUrl;
             }
