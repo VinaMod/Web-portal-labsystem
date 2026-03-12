@@ -1785,6 +1785,13 @@ def start_lab(lab_id):
         lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${clientTestPort}", str(client_port))
         lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
         lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
+
+        flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
+        base_url = request.host_url.rstrip('/')
+        web_url = f"{base_url}/lab/{lab_session.id}/web/{port}/?flow_type={flow_type}"
+        lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${webTestUrl}", web_url)
+        lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${clientTestUrl}", f"{base_url}/lab/{lab_session.id}/web/{client_port}/?flow_type={flow_type}")
+
         print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
 
         db.session.commit()
@@ -1810,14 +1817,14 @@ def start_lab(lab_id):
                 print(f"Executing run command: {replaced_command}")
                 execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, False)
         
-        flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
-
         return jsonify({
             'message': 'Lab started successfully',
             'lab_id': lab_id,
             'lab_session_id': lab_session.id,
             'flow_type': flow_type,
-            'redirect_url': f'/lab/{lab_session.id}/terminal?flow_type={flow_type}'
+            'redirect_url': f'/lab/{lab_session.id}/terminal?flow_type={flow_type}',
+            'web_url': web_url,
+            'web_proxy_url': f'/lab/{lab_session.id}/web/{port}/?flow_type={flow_type}'
         })
     except Exception as e:
         db.session.rollback()
