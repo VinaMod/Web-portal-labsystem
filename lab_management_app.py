@@ -65,6 +65,20 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 def _normalize_flow_type(flow_type):
     ft = (flow_type or "LABTAINER").strip().upper()
     return ft if ft in ("LABTAINER", "CUSTOM") else "LABTAINER"
+
+
+def _web_prefix_for_flow(flow_type: str, lab_id: int) -> str:
+    """
+    Encode backend routing into the URL path so nginx can route by prefix
+    without relying on X-FLOW-TYPE / ?flow_type.
+
+    - CUSTOM    -> vul-lab-c (backend C)
+    - LABTAINER -> vul-lab-a if lab_id even else vul-lab-b
+    """
+    ft = _normalize_flow_type(flow_type)
+    if ft == "CUSTOM":
+        return "vul-lab-c"
+    return "vul-lab-a" if (int(lab_id) % 2 == 0) else "vul-lab-b"
 oauth = OAuth(app)
 
 # Lab Environment Config
@@ -1788,9 +1802,13 @@ def start_lab(lab_id):
 
         flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
         base_url = request.host_url.rstrip('/')
-        web_url = f"{base_url}/vul-lab/{lab_id}/web/{port}/?flow_type={flow_type}&lab_id={lab_id}"
+        web_prefix = _web_prefix_for_flow(flow_type, lab_id)
+        web_url = f"{base_url}/{web_prefix}/{lab_session.id}/web/{port}/"
         lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${webTestUrl}", web_url)
-        lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${clientTestUrl}", f"{base_url}/vul-lab/{lab_id}/web/{client_port}/?flow_type={flow_type}")
+        lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(
+            "${clientTestUrl}",
+            f"{base_url}/{web_prefix}/{lab_session.id}/web/{client_port}/"
+        )
 
         print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
 
@@ -1824,7 +1842,7 @@ def start_lab(lab_id):
             'flow_type': flow_type,
             'redirect_url': f'/lab/{lab_session.id}/terminal?flow_type={flow_type}',
             'web_url': web_url,
-            'web_proxy_url': f'/lab/{lab_session.id}/web/{port}/?flow_type={flow_type}&lab_id={lab_id}'
+            'web_proxy_url': f'/{web_prefix}/{lab_session.id}/web/{port}/'
         })
     except Exception as e:
         db.session.rollback()
@@ -1884,11 +1902,12 @@ def run_lab_commands(lab_session_id):
 
     flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
     base_url = request.host_url.rstrip('/')
-    web_url = f"{base_url}/vul-lab/{lab_id}/web/{port}/?flow_type={flow_type}&lab_id={lab_id}"
+    web_prefix = _web_prefix_for_flow(flow_type, lab_id)
+    web_url = f"{base_url}/{web_prefix}/{lab_session.id}/web/{port}/"
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${webTestUrl}", web_url)
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(
         "${clientTestUrl}",
-        f"{base_url}/vul-lab/{lab_id}/web/{client_port}/?flow_type={flow_type}&lab_id={lab_id}"
+        f"{base_url}/{web_prefix}/{lab_session.id}/web/{client_port}/"
     )
     print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
     try:
@@ -1954,7 +1973,7 @@ def run_lab_commands(lab_session_id):
             'lab_session_id': lab_session.id,
             'flow_type': flow_type,
             'web_url': web_url,
-            'web_proxy_url': f'/lab/{lab_session.id}/web/{port}/?flow_type={flow_type}&lab_id={lab_id}'
+            'web_proxy_url': f'/{web_prefix}/{lab_session.id}/web/{port}/'
         })
     except Exception as e:
         print(f"Error running lab commands: {e}")
