@@ -971,7 +971,7 @@
                       submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Submitting...';
 
                       try {
-                          const response = await fetch('/api/lab/{{ lab_session.id }}/submit', {
+                          const response = await fetch('/api/lab/{{ lab_session.lab_id }}/{{ lab_session.id }}/submit', {
                               method: 'POST',
                               headers: {
                                   'Content-Type': 'application/json',
@@ -1087,7 +1087,7 @@
                   try {
                       terminal.write('\r\n\x1b[1;33m=== Running Lab Commands ===\x1b[0m\r\n');
 
-                      const response = await fetch(`/api/lab/{{ lab_session.id }}/run-commands`, {
+                      const response = await fetch(`/api/lab/{{ lab_session.lab_id }}/{{ lab_session.id }}/run-commands`, {
                           method: 'POST',
                           headers: {
                               'Content-Type': 'application/json',

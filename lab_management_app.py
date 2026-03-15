@@ -1803,11 +1803,11 @@ def start_lab(lab_id):
         flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
         base_url = request.host_url.rstrip('/')
         web_prefix = _web_prefix_for_flow(flow_type, lab_id)
-        web_url = f"{base_url}/{web_prefix}/{lab_session.id}/web/{port}/"
+        web_url = f"{base_url}/{web_prefix}/{lab_id}/web/{port}/"
         lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${webTestUrl}", web_url)
         lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(
             "${clientTestUrl}",
-            f"{base_url}/{web_prefix}/{lab_session.id}/web/{client_port}/"
+            f"{base_url}/{web_prefix}/{lab_id}/web/{client_port}/"
         )
 
         print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
@@ -1842,7 +1842,7 @@ def start_lab(lab_id):
             'flow_type': flow_type,
             'redirect_url': f'/lab/{lab_session.id}/terminal?flow_type={flow_type}',
             'web_url': web_url,
-            'web_proxy_url': f'/{web_prefix}/{lab_session.id}/web/{port}/'
+            'web_proxy_url': f'/{web_prefix}/{lab_id}/web/{port}/'
         })
     except Exception as e:
         db.session.rollback()
@@ -1850,42 +1850,48 @@ def start_lab(lab_id):
         import traceback
         traceback.print_exc()
         return jsonify({'error': 'Failed to start lab'}), 500
-@app.route('/api/lab/<int:lab_session_id>/run-commands', methods=['POST'])
-@login_required
-def run_lab_commands(lab_session_id):
-    """Run lab commands manually (for re-running failed start commands)"""
+def _run_lab_commands(lab_id, lab_session_id):
+    """Internal helper for running lab commands.
+
+    This supports both the new URL format (/api/lab/<lab_id>/<lab_session_id>/...)
+    and the legacy URL format (/api/lab/<lab_session_id>/...).
+    """
+
     user_id = session['user']['id']
-    
-    # Get lab and verify user enrollment
+
+    # Get lab session and verify ownership
     lab_session = LabSession.query.get_or_404(lab_session_id)
     if lab_session.user_id != user_id:
         return jsonify({'error': 'Unauthorized'}), 403
-    
+
+    # Ensure the lab_id in the URL matches the lab session
+    if lab_session.lab_id != lab_id:
+        return jsonify({'error': 'Lab ID mismatch'}), 400
+
     lab = lab_session.lab
-    lab_id = lab.id
     user = User.query.filter_by(id=user_id).first()
     user_linux_name = get_student_username(user.email)
     print("PREPARE FOR LABS ", lab.name)
     if not lab:
         return jsonify({'error': 'Lab not found'}), 404
-    
+
     enrollment = Enrollment.query.filter_by(
         user_id=user_id, course_id=lab.course_id, status='active'
     ).first()
-    
+
     if not enrollment:
         return jsonify({'error': 'Not enrolled in this course'}), 403
-    
+
     # Get or create lab session
     if not clone_lab_folder(user_id, lab_id):
-            print(f"Failed to clone lab folder for user {user_id}, lab {lab_id}")
-            return jsonify({'error': 'Failed to setup lab environment. Please check if the lab template exists.'}), 500
-    
+        print(f"Failed to clone lab folder for user {user_id}, lab {lab_id}")
+        return jsonify({'error': 'Failed to setup lab environment. Please check if the lab template exists.'}), 500
+
     # Update session status
     if lab_session.status == 'not_started':
         lab_session.status = 'in_progress'
         lab_session.started_at = datetime.utcnow()
-    
+
     lab_session.last_accessed = datetime.utcnow()
     port = get_free_port(8000, 10000)
     if not port:
@@ -1903,25 +1909,25 @@ def run_lab_commands(lab_session_id):
     flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
     base_url = request.host_url.rstrip('/')
     web_prefix = _web_prefix_for_flow(flow_type, lab_id)
-    web_url = f"{base_url}/{web_prefix}/{lab_session.id}/web/{port}/"
+    web_url = f"{base_url}/{web_prefix}/{lab_id}/web/{port}/"
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${webTestUrl}", web_url)
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(
         "${clientTestUrl}",
-        f"{base_url}/{web_prefix}/{lab_session.id}/web/{client_port}/"
+        f"{base_url}/{web_prefix}/{lab_id}/web/{client_port}/"
     )
     print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
     try:
         db.session.commit()
         print("PREPARE FOR LABS ", lab.name)
-    
+
         # Apply parameter file modifications if specified
         if lab.lab_parameters and lab_session.student_folder:
             apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name, port, client_port, user.email)
-        
+
         # # Execute build command if specified
         # if lab.build_command and lab_session.student_folder:
         #     execute_build_command(user_linux_name, lab.build_command, lab_session.student_folder)
-        
+
         # Execute run commands if specified
         print(f"Student folder: {lab_session.student_folder}")
         print(f"Raw command list: {lab.run_commands_list}")
@@ -1973,13 +1979,26 @@ def run_lab_commands(lab_session_id):
             'lab_session_id': lab_session.id,
             'flow_type': flow_type,
             'web_url': web_url,
-            'web_proxy_url': f'/{web_prefix}/{lab_session.id}/web/{port}/'
+            'web_proxy_url': f'/{web_prefix}/{lab_id}/web/{port}/'
         })
     except Exception as e:
         print(f"Error running lab commands: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500    
+
+
+@app.route('/api/lab/<int:lab_id>/<int:lab_session_id>/run-commands', methods=['POST'])
+@login_required
+def run_lab_commands(lab_id, lab_session_id):
+    return _run_lab_commands(lab_id, lab_session_id)
+
+
+@app.route('/api/lab/<int:lab_session_id>/run-commands', methods=['POST'])
+@login_required
+def run_lab_commands_legacy(lab_session_id):
+    lab_session = LabSession.query.get_or_404(lab_session_id)
+    return _run_lab_commands(lab_session.lab_id, lab_session_id)
 
 def apply_parameter_file_modifications(lab, student_folder, user_linux_name, port, client_port, email):
     """
@@ -2440,30 +2459,37 @@ def lab_terminal(lab_session_id):
     
     return render_template('lab_terminal.html', lab_session=lab_session)
 
-@app.route('/api/lab/<int:lab_session_id>/submit', methods=['POST'])
-@login_required
-def submit_lab(lab_session_id):
-    """Submit lab with checkpoint answers"""
+def _submit_lab(lab_id, lab_session_id):
+    """Internal helper for lab submission.
+
+    Supports both new path format (/api/lab/<lab_id>/<lab_session_id>/submit)
+    and legacy format (/api/lab/<lab_session_id>/submit).
+    """
+
     user_id = session['user']['id']
-    
+
     # Get lab session and verify ownership
     lab_session = LabSession.query.get_or_404(lab_session_id)
     if lab_session.user_id != user_id:
         return jsonify({'error': 'Unauthorized'}), 403
-    
+
+    # Ensure the lab_id in the URL matches the lab session
+    if lab_session.lab_id != lab_id:
+        return jsonify({'error': 'Lab ID mismatch'}), 400
+
     lab = lab_session.lab
     data = request.json
     user = db.session.get(User, user_id)
     # Validate number of checkpoints
     if lab.num_checkpoints == 0:
         return jsonify({'error': 'This lab does not have checkpoints configured'}), 400
-    
+
     checkpoint_answers = data.get('checkpoint_answers', [])
     if len(checkpoint_answers) != lab.num_checkpoints:
         return jsonify({
             'error': f'Expected {lab.num_checkpoints} checkpoint answers, got {len(checkpoint_answers)}'
         }), 400
-    
+
     try:
         # Validate and score checkpoints
         results = validate_checkpoints(lab, lab_session, checkpoint_answers, user)
@@ -2520,6 +2546,20 @@ def submit_lab(lab_session_id):
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/lab/<int:lab_id>/<int:lab_session_id>/submit', methods=['POST'])
+@login_required
+def submit_lab(lab_id, lab_session_id):
+    return _submit_lab(lab_id, lab_session_id)
+
+
+@app.route('/api/lab/<int:lab_session_id>/submit', methods=['POST'])
+@login_required
+def submit_lab_legacy(lab_session_id):
+    lab_session = LabSession.query.get_or_404(lab_session_id)
+    return _submit_lab(lab_session.lab_id, lab_session_id)
+
 
 def validate_checkpoints(lab, lab_session, checkpoint_answers, user):
     """
