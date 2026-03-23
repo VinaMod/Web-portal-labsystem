@@ -2178,10 +2178,13 @@ def release_port(port_number=None, username=None):
     if port_number is not None:
         port = Port.query.filter_by(port_number=port_number).first()
         if port and port.is_used:
+            print(f"Releasing port {port_number} (was used by {port.used_by})")
             port.is_used = False
             port.used_by = None
             db.session.commit()
+            print(f"Successfully released port {port_number}")
             return True
+        print(f"Port {port_number} not found or not in use")
         return False
 
     if username:
@@ -2189,18 +2192,24 @@ def release_port(port_number=None, username=None):
         if not normalized.startswith('student_'):
             normalized = f'student_{normalized}'
 
+        print(f"Looking for ports used by {username} or {normalized}")
         ports = Port.query.filter(
             (Port.used_by == normalized) |
             (Port.used_by == username)
         ).all()
+        print(f"Found {len(ports)} ports for user {username}")
         released = 0
         for port in ports:
             if port.is_used:
+                print(f"Releasing port {port.port_number} (used by {port.used_by})")
                 port.is_used = False
                 port.used_by = None
                 released += 1
         if released > 0:
             db.session.commit()
+            print(f"Successfully released {released} ports for user {username}")
+        else:
+            print(f"No ports to release for user {username}")
         return released
 
     return 0
@@ -2970,11 +2979,12 @@ def cleanup_docker_resources(student_name, clean_docker_only):
             print(f"No networks found for {student_name}")
 
         # Release ports held by this user (if any)
-        student_username = student_name
-        if not student_username.startswith('student_'):
-            student_username = f'student_{student_username}'
-        released = release_ports_by_user(student_username)
-        print(f"Released {released} ports for user {student_username}")
+        if not clean_docker_only:
+            student_username = student_name
+            if not student_username.startswith('student_'):
+                student_username = f'student_{student_username}'
+            released = release_ports_by_user(student_username)
+            print(f"Released {released} ports for user {student_username}")
 
     except Exception as e:
         print(f"Error when cleaning docker resources: {e}")
