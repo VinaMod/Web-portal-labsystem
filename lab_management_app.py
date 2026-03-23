@@ -264,6 +264,9 @@ class LabSession(db.Model):
     checkpoint_answers = db.Column(db.Text)  # JSON: student's checkpoint answers
     checkpoint_results = db.Column(db.Text)  # JSON: validation results for each checkpoint
     generated_flag = db.Column(db.String(255))  # Auto-generated flag for this lab session
+    web_port = db.Column(db.Integer, nullable=True)
+    client_port = db.Column(db.Integer, nullable=True)
+    db_port = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     __table_args__ = (db.UniqueConstraint('user_id', 'lab_id'),)
@@ -313,6 +316,16 @@ class LabsNetwork(db.Model):
 
     def __repr__(self):
         return f"<LabsNetwork {self.name} ({self.subnet_ip_base})>"    
+
+class Port(db.Model):
+    __tablename__ = 'ports'
+
+    id = db.Column(db.Integer, primary_key=True)
+    port_number = db.Column(db.Integer, nullable=False, unique=True)
+    is_used = db.Column(db.Boolean, default=False)
+    used_by = db.Column(db.String(100), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 # Helper Functions
 def login_required(f):
@@ -1522,6 +1535,14 @@ def delete_lab_session(session_id):
         except Exception as e:
             print(f"Warning: Could not delete folder {lab_session.student_folder}: {e}")
     
+    # Release ports
+    if lab_session.web_port:
+        release_port(lab_session.web_port)
+    if lab_session.client_port:
+        release_port(lab_session.client_port)
+    if lab_session.db_port:
+        release_port(lab_session.db_port)
+    
     try:
         db.session.delete(lab_session)
         db.session.commit()
@@ -1786,12 +1807,16 @@ def start_lab(lab_id):
     
     try:
         lab_session.last_accessed = datetime.utcnow()
-        port = get_free_port(8000, 10000)
+        port = reserve_port(8000, 10000, user_linux_name)
         if not port:
             raise ValueError("No available port for lab!")
-        client_port = get_free_port(50000, 60000)
+        client_port = reserve_port(50000, 60000, user_linux_name)
         if not client_port:
             raise ValueError("No available port for lab!")
+
+        # Store ports in lab session
+        lab_session.web_port = port
+        lab_session.client_port = client_port
 
         print("===================== WEB TEST RUN IN PORT ", port)
         output_template = lab.output_result or ""
@@ -1817,7 +1842,7 @@ def start_lab(lab_id):
     
         # Apply parameter file modifications if specified
         if lab.lab_parameters and lab_session.student_folder:
-            apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name, port, client_port, user.email)
+            apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name, port, client_port, user.email, lab_session)
         
         # # Execute build command if specified
         # if lab.build_command and lab_session.student_folder:
@@ -1893,12 +1918,17 @@ def _run_lab_commands(lab_id, lab_session_id):
         lab_session.started_at = datetime.utcnow()
 
     lab_session.last_accessed = datetime.utcnow()
-    port = get_free_port(8000, 10000)
+    port = reserve_port(8000, 10000, user_linux_name)
     if not port:
         raise ValueError("No available port for lab!")
-    client_port = get_free_port(50000, 60000)
+    client_port = reserve_port(50000, 60000, user_linux_name)
     if not client_port:
         raise ValueError("No available port for lab!")
+
+    # Store ports in lab session
+    lab_session.web_port = port
+    lab_session.client_port = client_port
+
     print("===================== WEB TEST RUN IN PORT ", port)
     output_template = lab.output_result or ""
     lab_session.success_start_lab_output = output_template.replace("${webTestPort}", str(port))
@@ -1922,7 +1952,7 @@ def _run_lab_commands(lab_id, lab_session_id):
 
         # Apply parameter file modifications if specified
         if lab.lab_parameters and lab_session.student_folder:
-            apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name, port, client_port, user.email)
+            apply_parameter_file_modifications(lab, lab_session.student_folder, user_linux_name, port, client_port, user.email, lab_session)
 
         # # Execute build command if specified
         # if lab.build_command and lab_session.student_folder:
@@ -2000,7 +2030,7 @@ def run_lab_commands_legacy(lab_session_id):
     lab_session = LabSession.query.get_or_404(lab_session_id)
     return _run_lab_commands(lab_session.lab_id, lab_session_id)
 
-def apply_parameter_file_modifications(lab, student_folder, user_linux_name, port, client_port, email):
+def apply_parameter_file_modifications(lab, student_folder, user_linux_name, port, client_port, email, lab_session):
     """
     Modify files with parameter values when file_path is specified
     and rename file if file_path contains STUDENT_NAME_LAB_PARAMETER
@@ -2026,9 +2056,10 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
     rename_files_in_matching_folders(student_folder,"client", user_linux_name)
     rename_files_in_matching_folders(student_folder,"ftp", user_linux_name)
     # First pass: determine random values for all parameters
-    db_port = get_free_port(3000, 5000)
+    db_port = reserve_port(3000, 5000, user_linux_name)
     if not db_port:
         raise ValueError("No available port for lab!")
+    lab_session.db_port = db_port
     for param in lab.lab_parameters:
         if param.values_list:
             value = random.choice(param.values_list)
@@ -2128,6 +2159,57 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
 
         except Exception as e:
             print(f"❌ Error modifying file {final_file_path}: {e}")
+
+def reserve_port(range_start, range_end, username=None):
+    """Reserve an available port in the given range and mark username as owner"""
+    port = Port.query.filter(
+        Port.port_number.between(range_start, range_end),
+        Port.is_used == False
+    ).with_for_update().first()
+    if port:
+        port.is_used = True
+        port.used_by = username
+        db.session.commit()
+        return port.port_number
+    return None
+
+def release_port(port_number=None, username=None):
+    """Release port(s) by number or username"""
+    if port_number is not None:
+        port = Port.query.filter_by(port_number=port_number).first()
+        if port and port.is_used:
+            port.is_used = False
+            port.used_by = None
+            db.session.commit()
+            return True
+        return False
+
+    if username:
+        normalized = username
+        if not normalized.startswith('student_'):
+            normalized = f'student_{normalized}'
+
+        ports = Port.query.filter(
+            (Port.used_by == normalized) |
+            (Port.used_by == username)
+        ).all()
+        released = 0
+        for port in ports:
+            if port.is_used:
+                port.is_used = False
+                port.used_by = None
+                released += 1
+        if released > 0:
+            db.session.commit()
+        return released
+
+    return 0
+
+def release_ports_by_user(username):
+    """Alias helper to release all ports used by username"""
+    return release_port(username=username)
+
+
 def get_free_port(start=8000, end=8999):
     for port in range(start, end + 1):
         cmd = f"ss -tuln | grep -q ':{port} '"
@@ -2526,6 +2608,14 @@ def _submit_lab(lab_id, lab_session_id):
         
         db.session.commit()
         
+        # Release ports
+        if lab_session.web_port:
+            release_port(lab_session.web_port)
+        if lab_session.client_port:
+            release_port(lab_session.client_port)
+        if lab_session.db_port:
+            release_port(lab_session.db_port)
+        
         return jsonify({
             'message': 'Lab submitted successfully',
             'score': score,
@@ -2559,6 +2649,64 @@ def submit_lab(lab_id, lab_session_id):
 def submit_lab_legacy(lab_session_id):
     lab_session = LabSession.query.get_or_404(lab_session_id)
     return _submit_lab(lab_session.lab_id, lab_session_id)
+
+
+@app.route('/api/ports', methods=['GET'])
+@login_required
+def get_ports():
+    """Get all ports and their status"""
+    ports = Port.query.order_by(Port.port_number).all()
+    return jsonify([{
+        'id': p.id,
+        'port_number': p.port_number,
+        'is_used': p.is_used,
+        'used_by': p.used_by
+    } for p in ports])
+
+@app.route('/api/ports/reserve', methods=['POST'])
+@login_required
+def reserve_port_api():
+    """Reserve an available port in the given range"""
+    data = request.json
+    range_start = data.get('range_start', 8000)
+    range_end = data.get('range_end', 10000)
+    port = reserve_port(range_start, range_end)
+    if port:
+        return jsonify({'port_number': port})
+    return jsonify({'error': 'No available port'}), 400
+
+
+@app.route('/api/ports/release/<int:port_number>', methods=['POST'])
+@login_required
+def release_port_api(port_number):
+    """Release a port"""
+    release_port(port_number)
+    return jsonify({'message': 'Port released'})
+
+
+@app.route('/api/ports/user/<string:username>', methods=['GET'])
+@login_required
+def get_ports_by_user(username):
+    """Get all ports currently reserved by a username"""
+    normalized = username
+    if not normalized.startswith('student_'):
+        normalized = f'student_{normalized}'
+
+    ports = Port.query.filter_by(used_by=normalized).order_by(Port.port_number).all()
+    return jsonify([{
+        'id': p.id,
+        'port_number': p.port_number,
+        'is_used': p.is_used,
+        'used_by': p.used_by
+    } for p in ports])
+
+
+@app.route('/api/ports/release-by-user/<string:username>', methods=['POST'])
+@login_required
+def release_ports_by_user_api(username):
+    """Release all ports assigned to a username"""
+    released = release_ports_by_user(username)
+    return jsonify({'message': f'Released {released} ports for {username}', 'released_count': released})
 
 
 def validate_checkpoints(lab, lab_session, checkpoint_answers, user):
@@ -2820,6 +2968,13 @@ def cleanup_docker_resources(student_name, clean_docker_only):
                 subprocess.call(f"docker network rm {n}", shell=True)
         else:
             print(f"No networks found for {student_name}")
+
+        # Release ports held by this user (if any)
+        student_username = student_name
+        if not student_username.startswith('student_'):
+            student_username = f'student_{student_username}'
+        released = release_ports_by_user(student_username)
+        print(f"Released {released} ports for user {student_username}")
 
     except Exception as e:
         print(f"Error when cleaning docker resources: {e}")

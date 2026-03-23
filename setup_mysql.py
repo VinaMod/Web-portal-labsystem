@@ -320,6 +320,55 @@ def create_sample_lab_with_parameters():
         import traceback
         traceback.print_exc()
 
+def populate_ports():
+    """Populate ports table with available ports"""
+    print("\n" + "="*60)
+    print("POPULATING PORTS TABLE")
+    print("="*60)
+    
+    try:
+        from lab_management_app import app, db, Port
+        
+        with app.app_context():
+            # Check if ports already exist
+            existing_count = Port.query.count()
+            if existing_count > 0:
+                print(f"   ⚠️ Ports table already has {existing_count} entries. Skipping.")
+                return
+            
+            print("\n[1/3] Adding web ports (8000-10000)...")
+            web_ports = []
+            for port in range(8000, 10001):
+                web_ports.append(Port(port_number=port, is_used=False))
+            db.session.add_all(web_ports)
+            print(f"   ✅ Added {len(web_ports)} web ports")
+            
+            print("\n[2/3] Adding client ports (50000-60000)...")
+            client_ports = []
+            for port in range(50000, 60001):
+                client_ports.append(Port(port_number=port, is_used=False))
+            db.session.add_all(client_ports)
+            print(f"   ✅ Added {len(client_ports)} client ports")
+            
+            print("\n[3/3] Adding database ports (3000-5000)...")
+            db_ports = []
+            for port in range(3000, 5001):
+                db_ports.append(Port(port_number=port, is_used=False))
+            db.session.add_all(db_ports)
+            print(f"   ✅ Added {len(db_ports)} database ports")
+            
+            db.session.commit()
+            
+            total_ports = len(web_ports) + len(client_ports) + len(db_ports)
+            print("\n" + "="*60)
+            print(f"✅ PORTS POPULATED SUCCESSFULLY! Total: {total_ports}")
+            print("="*60)
+            
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+
 def main():
     """Main entry point"""
     if len(sys.argv) < 2:
@@ -330,9 +379,11 @@ def main():
         print("   python setup_mysql.py migrate        - Run migrations")
         print("   python setup_mysql.py status         - Check database status")
         print("   python setup_mysql.py sample         - Create sample lab")
+        print("   python setup_mysql.py ports          - Populate ports table")
         print("\nNew Features:")
         print("   🎯 Lab Parameters - Dynamic parameter configuration")
         print("   🚀 Run Command - Auto-execute on lab start")
+        print("   🔌 Port Management - Database-managed ports")
         print("="*60 + "\n")
         return
     
@@ -344,9 +395,11 @@ def main():
         show_status()
     elif command == 'sample':
         create_sample_lab_with_parameters()
+    elif command == 'ports':
+        populate_ports()
     else:
         print(f"\n❌ Unknown command: {command}")
-        print("Use: migrate, status, or sample")
+        print("Use: migrate, status, sample, or ports")
 
 if __name__ == '__main__':
     main()
