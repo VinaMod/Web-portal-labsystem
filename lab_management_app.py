@@ -1455,10 +1455,7 @@ def create_lab_session():
     existing = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
     if existing:
         return jsonify({'error': 'Lab session already exists for this user'}), 400
-    
-    # Clone lab folder
-    if not clone_lab_folder(user_id, lab_id):
-        return jsonify({'error': 'Failed to setup lab environment'}), 500
+
     
     # Get the newly created session
     lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
@@ -1789,16 +1786,18 @@ def start_lab(lab_id):
     
     # Get or create lab session
     lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
+
+
+    # Clone lab folder and (re)create session
+    if not clone_lab_folder(user_id, lab_id):
+        print(f"Failed to clone lab folder for user {user_id}, lab {lab_id}")
+        return jsonify({'error': 'Failed to setup lab environment. Please check if the lab template exists.'}), 500
+
+    # Fetch the (new) session
+    lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
     if not lab_session:
-        # Clone lab folder and create session
-        if not clone_lab_folder(user_id, lab_id):
-            print(f"Failed to clone lab folder for user {user_id}, lab {lab_id}")
-            return jsonify({'error': 'Failed to setup lab environment. Please check if the lab template exists.'}), 500
-        # Fetch the newly created session
-        lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
-        if not lab_session:
-            print(f"Lab session not found after cloning for user {user_id}, lab {lab_id}")
-            return jsonify({'error': 'Failed to create lab session'}), 500
+        print(f"Lab session not found after cloning for user {user_id}, lab {lab_id}")
+        return jsonify({'error': 'Failed to create lab session'}), 500
     
     # Update session status
     if lab_session.status == 'not_started':
