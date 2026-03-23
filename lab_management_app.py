@@ -2166,6 +2166,7 @@ def reserve_port(range_start, range_end, username=None):
         Port.is_used == False
     ).with_for_update().first()
     if port:
+        print(f"Reserving port {port.port_number} for user {username}")
         port.is_used = True
         port.used_by = username
         db.session.commit()
