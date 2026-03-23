@@ -63,8 +63,8 @@ migrate = Migrate(app, db)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 def _normalize_flow_type(flow_type):
-    ft = (flow_type or "LABTAINER").strip().upper()
-    return ft if ft in ("LABTAINER", "CUSTOM") else "LABTAINER"
+    ft = (flow_type or FLOW_TYPE_LABTAINER).strip().upper()
+    return ft if ft in (FLOW_TYPE_LABTAINER, FLOW_TYPE_CUSTOM) else FLOW_TYPE_LABTAINER
 
 
 def _web_prefix_for_flow(flow_type: str, lab_id: int) -> str:
@@ -76,7 +76,7 @@ def _web_prefix_for_flow(flow_type: str, lab_id: int) -> str:
     - LABTAINER -> vul-lab-a if lab_id even else vul-lab-b
     """
     ft = _normalize_flow_type(flow_type)
-    if ft == "CUSTOM":
+    if ft == FLOW_TYPE_CUSTOM:
         return "vul-lab-c"
     return "vul-lab-a" if (int(lab_id) % 2 == 0) else "vul-lab-b"
 oauth = OAuth(app)
@@ -101,6 +101,10 @@ LAB_SUB_NETWORK_IP_PREFIX = "${labSubnetIpPrefix}"
 WEB_TEST_PORT_PARAM = "${webTestPort}"
 CLIENT_TEST_PORT_PARAM = "${clientTestPort}"
 DB_TEST_PORT_PARAM = "${dbTestPort}"
+
+# Flow Type Constants
+FLOW_TYPE_LABTAINER = "LABTAINER"
+FLOW_TYPE_CUSTOM = "CUSTOM"
 
 # Ensure directories exist
 os.makedirs(LAB_TEMPLATES_PATH, exist_ok=True)
@@ -168,7 +172,7 @@ class Lab(db.Model):
     description = db.Column(db.Text)
     template_folder = db.Column(db.String(255), nullable=False)
     # Routing hint for Nginx: LABTAINER -> backend A/B, CUSTOM -> backend C
-    flow_type = db.Column(db.String(20), nullable=False, default='LABTAINER')
+    flow_type = db.Column(db.String(20), nullable=False, default=FLOW_TYPE_LABTAINER)
     accessible_resources = db.Column(db.Text)  # JSON array
     build_command = db.Column(db.Text)
     order_index = db.Column(db.Integer, default=0)
@@ -688,7 +692,7 @@ def dashboard():
                 'id': lab.id,
                 'name': lab.name,
                 'description': lab.description,
-                'flow_type': getattr(lab, 'flow_type', 'LABTAINER'),
+                'flow_type': getattr(lab, 'flow_type', FLOW_TYPE_LABTAINER),
                 'lab_session_id': lab_session.id if lab_session else None,
                 'deadline': lab.deadline,
                 'difficulty': lab.difficulty,
@@ -1126,7 +1130,7 @@ def admin_labs():
         'course_name': l.course.name,
         'description': l.description,
         'template_folder': l.template_folder,
-        'flow_type': getattr(l, 'flow_type', 'LABTAINER'),
+        'flow_type': getattr(l, 'flow_type', FLOW_TYPE_LABTAINER),
         'accessible_resources': l.accessible_resources,
         'build_command': l.build_command,
         'run_commands': l.run_commands,
@@ -1157,9 +1161,9 @@ def create_lab():
     """Create new lab"""
     data = request.json
 
-    flow_type = (data.get('flow_type') or 'LABTAINER').upper()
-    if flow_type not in ('LABTAINER', 'CUSTOM'):
-        flow_type = 'LABTAINER'
+    flow_type = (data.get('flow_type') or FLOW_TYPE_LABTAINER).upper()
+    if flow_type not in (FLOW_TYPE_LABTAINER, FLOW_TYPE_CUSTOM):
+        flow_type = FLOW_TYPE_LABTAINER
     
     lab = Lab(
         course_id=data['course_id'],
@@ -1220,8 +1224,8 @@ def update_lab(lab_id):
     if 'template_folder' in data:
         lab.template_folder = data['template_folder']
     if 'flow_type' in data:
-        flow_type = (data.get('flow_type') or 'LABTAINER').upper()
-        if flow_type in ('LABTAINER', 'CUSTOM'):
+        flow_type = (data.get('flow_type') or FLOW_TYPE_LABTAINER).upper()
+        if flow_type in (FLOW_TYPE_LABTAINER, FLOW_TYPE_CUSTOM):
             lab.flow_type = flow_type
     if 'accessible_resources' in data:
         lab.accessible_resources = json.dumps(data['accessible_resources'])
@@ -1777,6 +1781,8 @@ def start_lab(lab_id):
     if not lab:
         return jsonify({'error': 'Lab not found'}), 404
     
+    flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
+    
     print("PREPARE FOR LABS ", lab.name)
     user_linux_name = get_student_username(user.email) if user and user.email else f"student_{user_id}"
     
@@ -1791,16 +1797,23 @@ def start_lab(lab_id):
     lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
 
 
-    # Clone lab folder and (re)create session
-    if not clone_lab_folder(user_id, lab_id):
-        print(f"Failed to clone lab folder for user {user_id}, lab {lab_id}")
-        return jsonify({'error': 'Failed to setup lab environment. Please check if the lab template exists.'}), 500
+    # Clone lab folder only for LABTAINER flow_type
+    if flow_type == FLOW_TYPE_LABTAINER:
+        if not clone_lab_folder(user_id, lab_id):
+            print(f"Failed to clone lab folder for user {user_id}, lab {lab_id}")
+            return jsonify({'error': 'Failed to setup lab environment. Please check if the lab template exists.'}), 500
 
-    # Fetch the (new) session
+    # Fetch or create the session
     lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
     if not lab_session:
-        print(f"Lab session not found after cloning for user {user_id}, lab {lab_id}")
-        return jsonify({'error': 'Failed to create lab session'}), 500
+        lab_session = LabSession(
+            user_id=user_id,
+            lab_id=lab_id,
+            student_folder=None  # For CUSTOM, no folder
+        )
+        db.session.add(lab_session)
+        db.session.commit()
+        print(f"Created new lab session for user {user_id}, lab {lab_id} (no folder for CUSTOM)")
     
     # Update session status
     if lab_session.status == 'not_started':
@@ -1911,9 +1924,10 @@ def _run_lab_commands(lab_id, lab_session_id):
         return jsonify({'error': 'Not enrolled in this course'}), 403
 
     # Get or create lab session
-    if not clone_lab_folder(user_id, lab_id):
-        print(f"Failed to clone lab folder for user {user_id}, lab {lab_id}")
-        return jsonify({'error': 'Failed to setup lab environment. Please check if the lab template exists.'}), 500
+    if flow_type == FLOW_TYPE_LABTAINER:
+        if not clone_lab_folder(user_id, lab_id):
+            print(f"Failed to clone lab folder for user {user_id}, lab {lab_id}")
+            return jsonify({'error': 'Failed to setup lab environment. Please check if the lab template exists.'}), 500
 
     # Update session status
     if lab_session.status == 'not_started':
@@ -2388,7 +2402,7 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
     """Execute run command when lab starts"""
     try:
         # If flow_type is CUSTOM, calculate TARGET_NODE based on lab_id
-        if flow_type == "CUSTOM" and lab_id is not None:
+        if flow_type == FLOW_TYPE_CUSTOM and lab_id is not None:
             TARGET_NODE = 98 if lab_id % 2 == 1 else 99
             # Add TARGET_NODE parameter to the run_command
             run_command = f"TARGET_NODE={TARGET_NODE} " + run_command
