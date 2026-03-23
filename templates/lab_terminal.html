@@ -645,10 +645,12 @@
     <script>
               // Initialize components
               const labSessionId = {{ lab_session.id }};
+              const labId = {{ lab_session.lab.id }};
               const FLOW_TYPE = new URLSearchParams(window.location.search).get('flow_type') || {{ (lab_session.lab.flow_type or 'LABTAINER')|tojson }};
               const socket = io({
                   query: {
                       flow_type: FLOW_TYPE,
+                      lab_id: String(labId),
                       lab_session_id: String(labSessionId),
                   },
               });
@@ -767,7 +769,7 @@
               // Socket event handlers
               socket.on('connect', () => {
                   updateConnectionStatus('connecting', 'Connecting...');
-                  socket.emit('start_terminal', { lab_session_id: labSessionId });
+                  socket.emit('start_terminal', { lab_id: labId, lab_session_id: labSessionId });
               });
 
               socket.on('disconnect', () => {

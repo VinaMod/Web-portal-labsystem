@@ -2991,6 +2991,7 @@ def cleanup_docker_resources(student_name, clean_docker_only):
 @socketio.on('start_terminal')
 def handle_start_terminal(data):
     session_id = request.sid
+    lab_id = data.get('lab_id')
     lab_session_id = data.get('lab_session_id')
     
     if 'user' not in session:
@@ -3003,6 +3004,11 @@ def handle_start_terminal(data):
     lab_session = LabSession.query.filter_by(id=lab_session_id, user_id=user_id).first()
     if not lab_session:
         socketio.emit('terminal_error', {'error': 'Lab session not found'})
+        return
+    
+    # Verify lab_id matches
+    if lab_session.lab_id != lab_id:
+        socketio.emit('terminal_error', {'error': 'Lab ID mismatch'})
         return
     
     # Get user object
