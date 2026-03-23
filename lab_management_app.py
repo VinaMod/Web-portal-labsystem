@@ -98,6 +98,9 @@ STUDENT_ID_LAB_PARAMETER = "${studentId}"
 LAB_NETWORK_MASK_PARAMETER = "${labNetworkMask}"
 LAB_NETWORK_GATEWAY_PARAMETER = "${labNetworkGateway}"
 LAB_SUB_NETWORK_IP_PREFIX = "${labSubnetIpPrefix}"
+WEB_TEST_PORT_PARAM = "${webTestPort}"
+CLIENT_TEST_PORT_PARAM = "${clientTestPort}"
+DB_TEST_PORT_PARAM = "${dbTestPort}"
 
 # Ensure directories exist
 os.makedirs(LAB_TEMPLATES_PATH, exist_ok=True)
@@ -1819,8 +1822,8 @@ def start_lab(lab_id):
 
         print("===================== WEB TEST RUN IN PORT ", port)
         output_template = lab.output_result or ""
-        lab_session.success_start_lab_output = output_template.replace("${webTestPort}", str(port))
-        lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${clientTestPort}", str(client_port))
+        lab_session.success_start_lab_output = output_template.replace(WEB_TEST_PORT_PARAM, str(port))
+        lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(CLIENT_TEST_PORT_PARAM, str(client_port))
         lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
         lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
 
@@ -1857,7 +1860,7 @@ def start_lab(lab_id):
                 print(f"Raw run command: {command}")
                 replaced_command = replace_lab_parameters(lab, command, user)
                 print(f"Executing run command: {replaced_command}")
-                execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, False)
+                execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, False, flow_type, lab_id, port, client_port, db_port)
         
         return jsonify({
             'message': 'Lab started successfully',
@@ -1895,6 +1898,7 @@ def _run_lab_commands(lab_id, lab_session_id):
     lab = lab_session.lab
     user = User.query.filter_by(id=user_id).first()
     user_linux_name = get_student_username(user.email)
+    flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
     print("PREPARE FOR LABS ", lab.name)
     if not lab:
         return jsonify({'error': 'Lab not found'}), 404
@@ -1930,8 +1934,8 @@ def _run_lab_commands(lab_id, lab_session_id):
 
     print("===================== WEB TEST RUN IN PORT ", port)
     output_template = lab.output_result or ""
-    lab_session.success_start_lab_output = output_template.replace("${webTestPort}", str(port))
-    lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace("${clientTestPort}", str(client_port))
+    lab_session.success_start_lab_output = output_template.replace(WEB_TEST_PORT_PARAM, str(port))
+    lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(CLIENT_TEST_PORT_PARAM, str(client_port))
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
 
@@ -1967,7 +1971,7 @@ def _run_lab_commands(lab_id, lab_session_id):
                 print(f"Raw run command: {command}")
                 replaced_command = replace_lab_parameters(lab, command, user)
                 print(f"Executing run command: {replaced_command}")
-                execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, True)
+                execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, True, flow_type, lab_id, lab_session.web_port, lab_session.client_port, lab_session.db_port)
 
         print("======= SEND START AND READY EVENT")  
         socketio.emit('terminal_ready', {'status': 'ready'})
@@ -2066,9 +2070,9 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
             value = value.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
             value = value.replace("${email}", email)
             value = value.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_", ""))
-            value = value.replace("${webTestPort}", str(port))
-            value = value.replace("${dbTestPort}", str(db_port))
-            value = value.replace("${clientTestPort}", str(client_port))
+            value = value.replace(WEB_TEST_PORT_PARAM, str(port))
+            value = value.replace(DB_TEST_PORT_PARAM, str(db_port))
+            value = value.replace(CLIENT_TEST_PORT_PARAM, str(client_port))
             if "${dockerExecCommand}" in param.parameter_name:
                 create_student_docker(user_linux_name, user_linux_name, value)
                 continue
@@ -2380,9 +2384,23 @@ def replace_lab_parameters(lab, command, user):
     
     return replaced_command
 
-def execute_run_command(user_linux_name, run_command, working_directory, clean_docker_only):
+def execute_run_command(user_linux_name, run_command, working_directory, clean_docker_only, flow_type=None, lab_id=None, web_port=None, client_port=None, db_port=None):
     """Execute run command when lab starts"""
     try:
+        # If flow_type is CUSTOM, calculate TARGET_NODE based on lab_id
+        if flow_type == "CUSTOM" and lab_id is not None:
+            TARGET_NODE = 98 if lab_id % 2 == 1 else 99
+            # Add TARGET_NODE parameter to the run_command
+            run_command = f"TARGET_NODE={TARGET_NODE} " + run_command
+        
+        # Replace port parameters in run_command
+        if web_port is not None:
+            run_command = run_command.replace(WEB_TEST_PORT_PARAM, str(web_port))
+        if client_port is not None:
+            run_command = run_command.replace(CLIENT_TEST_PORT_PARAM, str(client_port))
+        if db_port is not None:
+            run_command = run_command.replace(DB_TEST_PORT_PARAM, str(db_port))
+        
         # Dùng newgrp -c "<command>" để chạy command với group mới
         print("COMPOSE DOWN DOCKER CONTAINER ....")
         full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo docker compose down"'
