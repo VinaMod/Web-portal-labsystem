@@ -1864,7 +1864,7 @@ def start_lab(lab_id):
             'lab_id': lab_id,
             'lab_session_id': lab_session.id,
             'flow_type': flow_type,
-            'redirect_url': f'/lab/{lab_session.id}/terminal?flow_type={flow_type}',
+            'redirect_url': f'/lab/{lab.id}/{lab_session.id}/terminal?flow_type={flow_type}',
             'web_url': web_url,
             'web_proxy_url': f'/{web_prefix}/{lab_id}/web/{port}/'
         })
@@ -2007,6 +2007,7 @@ def _run_lab_commands(lab_id, lab_session_id):
             'lab_id': lab_id,
             'lab_session_id': lab_session.id,
             'flow_type': flow_type,
+            'redirect_url': f'/lab/{lab_id}/{lab_session.id}/terminal?flow_type={flow_type}',
             'web_url': web_url,
             'web_proxy_url': f'/{web_prefix}/{lab_id}/web/{port}/'
         })

@@ -622,14 +622,14 @@
                 {% elif lab.status == 'in_progress' %}
                 <button
                   class="btn btn-lab btn-continue"
-                  onclick="continueLab({{ lab.lab_session_id }}, '{{ (lab.flow_type or 'LABTAINER')|e }}')"
+                  onclick="continueLab({{ lab.id }}, {{ lab.lab_session_id }}, '{{ (lab.flow_type or 'LABTAINER')|e }}')"
                 >
                   <i class="fas fa-play me-1"></i>Continue
                 </button>
                 {% elif lab.status in ['completed', 'submitted'] %}
                 <button
                   class="btn btn-lab btn-review"
-                  onclick="reviewLab({{ lab.lab_session_id }}, '{{ (lab.flow_type or 'LABTAINER')|e }}')"
+                  onclick="reviewLab({{ lab.id }}, {{ lab.lab_session_id }}, '{{ (lab.flow_type or 'LABTAINER')|e }}')"
                 >
                   <i class="fas fa-eye me-1"></i>Review
                 </button>
@@ -775,7 +775,7 @@
               // Keep loading screen visible and redirect
               const redirectUrl =
                 data.redirect_url ||
-                `/lab/${data.lab_session_id || labId}/terminal?flow_type=${encodeURIComponent(
+                `/lab/${labId}/${data.lab_session_id || labId}/terminal?flow_type=${encodeURIComponent(
                   ft
                 )}`;
               window.location.href = redirectUrl;
@@ -788,22 +788,22 @@
           });
       }
 
-      function continueLab(labSessionId, flowType) {
+      function continueLab(labId, labSessionId, flowType) {
         const ft = normalizeFlowType(flowType);
         // Show loading screen
         const loadingScreen = document.getElementById("loadingScreen");
         loadingScreen.style.display = "flex";
 
         // Same as start lab - redirect to terminal
-        window.location.href = `/lab/${labSessionId}/terminal?flow_type=${encodeURIComponent(
+        window.location.href = `/lab/${labId}/${labSessionId}/terminal?flow_type=${encodeURIComponent(
           ft
         )}`;
       }
 
-      function reviewLab(labSessionId, flowType) {
+      function reviewLab(labId, labSessionId, flowType) {
         const ft = normalizeFlowType(flowType);
         // Redirect to lab terminal in read-only mode
-        window.location.href = `/lab/${labSessionId}/terminal?mode=review&flow_type=${encodeURIComponent(
+        window.location.href = `/lab/${labId}/${labSessionId}/terminal?mode=review&flow_type=${encodeURIComponent(
           ft
         )}`;
       }
