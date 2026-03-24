@@ -1531,9 +1531,14 @@ def get_lab_session_commands(session_id):
 def delete_lab_session(session_id):
     """Delete lab session"""
     lab_session = LabSession.query.get_or_404(session_id)
+    flow_type = _normalize_flow_type(getattr(lab_session.lab, 'flow_type', None))
     
-    # Delete student folder if exists
-    if lab_session.student_folder and os.path.exists(lab_session.student_folder):
+    # Only remove per-student cloned folders. CUSTOM labs can point to a shared lab folder.
+    if (
+        flow_type != FLOW_TYPE_CUSTOM
+        and lab_session.student_folder
+        and os.path.exists(lab_session.student_folder)
+    ):
         try:
             shutil.rmtree(lab_session.student_folder)
         except Exception as e:
