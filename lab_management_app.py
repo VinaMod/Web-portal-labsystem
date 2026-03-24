@@ -2823,7 +2823,10 @@ def validate_checkpoints(lab, lab_session, checkpoint_answers, user):
             # Generate unique flag for this lab session
             # Format: Flag{SHA1(date_email_lab-key)}
             from datetime import datetime
-            from zoneinfo import ZoneInfo
+            try:
+                from zoneinfo import ZoneInfo
+            except ImportError:
+                from backports.zoneinfo import ZoneInfo
             import hashlib
 
             user_email = user.email  # hoặc gán chuỗi trực tiếp
