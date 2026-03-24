@@ -1825,19 +1825,24 @@ def start_lab(lab_id):
         lab_session.last_accessed = datetime.utcnow()
         port = reserve_port(8000, 10000, user_linux_name)
         if not port:
-            raise ValueError("No available port for lab!")
+            raise ValueError("No available web port for lab!")
         client_port = reserve_port(50000, 60000, user_linux_name)
         if not client_port:
-            raise ValueError("No available port for lab!")
+            raise ValueError("No available client port for lab!")
 
+        db_port = reserve_port(3000, 5000, user_linux_name)
+        if not db_port:
+            raise ValueError("No available database port for lab!")
         # Store ports in lab session
         lab_session.web_port = port
         lab_session.client_port = client_port
+        lab_session.db_port = db_port
 
         print("===================== WEB TEST RUN IN PORT ", port)
         output_template = lab.output_result or ""
         lab_session.success_start_lab_output = output_template.replace(WEB_TEST_PORT_PARAM, str(port))
         lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(CLIENT_TEST_PORT_PARAM, str(client_port))
+        lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(DB_TEST_PORT_PARAM, str(db_port))
         lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
         lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
 
@@ -2417,15 +2422,16 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
             run_command = run_command.replace(DB_TEST_PORT_PARAM, str(db_port))
         
         # Dùng newgrp -c "<command>" để chạy command với group mới
-        print("COMPOSE DOWN DOCKER CONTAINER ....")
-        full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo docker compose down"'
-        subprocess.run(
-            full_command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=500
-        )
+        if flow_type == FLOW_TYPE_LABTAINER:
+            print("COMPOSE DOWN DOCKER CONTAINER ....")
+            full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo docker compose down"'
+            subprocess.run(
+                full_command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=500
+            )
         cleanup_docker_resources(user_linux_name, clean_docker_only)
         last_folder = os.path.basename(working_directory)  # ví dụ: lab-1
         expected_cmd = f"rebuild {last_folder}"
@@ -2988,34 +2994,50 @@ def cleanup_docker_resources(student_name, clean_docker_only):
         student_name = student_name.replace("student_", "")
 
         # Remove containers
-        cmd_containers = f"docker ps -a --format '{{{{.Names}}}}' | grep '{student_name}' || true"
-        containers = subprocess.getoutput(cmd_containers)
+        try:
+            cmd_containers = f"docker ps -a --format '{{{{.Names}}}}' | grep '{student_name}' || true"
+            containers = subprocess.getoutput(cmd_containers)
 
-        if containers.strip():
-            for c in containers.splitlines():
-                print(f"Removing container: {c}")
-                subprocess.call(f"docker rm -f {c}", shell=True)
-        else:
-            print(f"No containers found for {student_name}")
+            if containers.strip():
+                for c in containers.splitlines():
+                    print(f"Removing container: {c}")
+                    subprocess.call(f"docker rm -f {c}", shell=True)
+            else:
+                print(f"No containers found for {student_name}")
+        except Exception as e:
+            print(f"Error removing containers: {e}")
 
         # Remove networks
-        cmd_networks = f"docker network ls --format '{{{{.Name}}}}' | grep '{student_name}' || true"
-        networks = subprocess.getoutput(cmd_networks)
+        try:
+            cmd_networks = f"docker network ls --format '{{{{.Name}}}}' | grep '{student_name}' || true"
+            networks = subprocess.getoutput(cmd_networks)
 
-        if networks.strip():
-            for n in networks.splitlines():
-                print(f"Removing network: {n}")
-                subprocess.call(f"docker network rm {n}", shell=True)
-        else:
-            print(f"No networks found for {student_name}")
+            if networks.strip():
+                for n in networks.splitlines():
+                    print(f"Removing network: {n}")
+                    subprocess.call(f"docker network rm {n}", shell=True)
+            else:
+                print(f"No networks found for {student_name}")
+        except Exception as e:
+            print(f"Error removing networks: {e}")
+
+        # Remove services
+        try:
+            print(f"Removing services for {student_name}")
+            subprocess.run(f"docker service rm $(docker service ls --filter name={student_name} -q)", shell=True, capture_output=True)
+        except Exception as e:
+            print(f"Error removing services: {e}")
 
         # Release ports held by this user (if any)
         if not clean_docker_only:
-            student_username = student_name
-            if not student_username.startswith('student_'):
-                student_username = f'student_{student_username}'
-            released = release_ports_by_user(student_username)
-            print(f"Released {released} ports for user {student_username}")
+            try:
+                student_username = student_name
+                if not student_username.startswith('student_'):
+                    student_username = f'student_{student_username}'
+                released = release_ports_by_user(student_username)
+                print(f"Released {released} ports for user {student_username}")
+            except Exception as e:
+                print(f"Error releasing ports: {e}")
 
     except Exception as e:
         print(f"Error when cleaning docker resources: {e}")
