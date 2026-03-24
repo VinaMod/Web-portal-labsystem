@@ -2437,10 +2437,11 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
         expected_cmd = f"rebuild {last_folder}"
         
         print("================== expected_cmd ", expected_cmd)
-        subprocess.run([
-                'sudo', 'chmod', '-R', '777', 
-                working_directory
-            ], check=True, capture_output=True)
+        if flow_type == FLOW_TYPE_LABTAINER:
+            subprocess.run([
+                    'sudo', 'chmod', '-R', '777', 
+                    working_directory
+                ], check=True, capture_output=True)
         if run_command == expected_cmd:
             result = subprocess.run(
             f"sudo chown -R student:student {working_directory}",
@@ -2452,12 +2453,14 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
             full_command = f"cd ~/labtainer/labtainer-student && {run_command}"
         else:
             print("CHOWN TO USER: ", user_linux_name)
-            subprocess.run([
-            'sudo', 'chown', '-R', f'{user_linux_name}:{user_linux_name}', working_directory
-            ], check=True, capture_output=True)
+            if flow_type == FLOW_TYPE_LABTAINER: 
+                subprocess.run([
+                'sudo', 'chown', '-R', f'{user_linux_name}:{user_linux_name}', working_directory
+                ], check=True, capture_output=True)
 
-            full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo {run_command}"'
-
+                full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo {run_command}"'
+            else:
+                full_command = f'cd {working_directory} && {run_command}'
         print("============ FULL COMMAND ========== ", full_command)
         result = subprocess.run(
             full_command,
@@ -2472,20 +2475,21 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
             print(f"Run output: {result.stdout}")
         if result.stderr:
             print(f"Run errors: {result.stderr}")
-        subprocess.run([
-                'sudo', 'chmod', '-R', '750', 
-                working_directory
-            ], check=True, capture_output=True)    
-        subprocess.run([
-            'sudo', 'chown', '-R', 'student:student', working_directory
-            ], check=True, capture_output=True)
-        subprocess.run(
-            f'cd /home/{user_linux_name}',
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=500
-        )
+        if flow_type == FLOW_TYPE_LABTAINER:    
+            subprocess.run([
+                    'sudo', 'chmod', '-R', '750', 
+                    working_directory
+                ], check=True, capture_output=True)    
+            subprocess.run([
+                'sudo', 'chown', '-R', 'student:student', working_directory
+                ], check=True, capture_output=True)
+            subprocess.run(
+                f'cd /home/{user_linux_name}',
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=500
+            )
         return result.returncode == 0
     except subprocess.TimeoutExpired:
         print("Run command timed out")
