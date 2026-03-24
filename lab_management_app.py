@@ -1806,14 +1806,15 @@ def start_lab(lab_id):
     # Fetch or create the session
     lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
     if not lab_session:
+        student_folder = f"/home/hoangnth/labtainer/labs/{lab.template_folder}" if flow_type == FLOW_TYPE_CUSTOM else None
         lab_session = LabSession(
             user_id=user_id,
             lab_id=lab_id,
-            student_folder=None  # For CUSTOM, no folder
+            student_folder=student_folder
         )
         db.session.add(lab_session)
         db.session.commit()
-        print(f"Created new lab session for user {user_id}, lab {lab_id} (no folder for CUSTOM)")
+        print(f"Created new lab session for user {user_id}, lab {lab_id} ({'with folder' if student_folder else 'no folder'})")
     
     # Update session status
     if lab_session.status == 'not_started':
