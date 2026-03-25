@@ -1884,8 +1884,12 @@ def start_lab(lab_id):
                 print(f"Raw run command: {command}")
                 replaced_command = replace_lab_parameters(lab, command, user)
                 print(f"Executing run command: {replaced_command}")
-                execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, False, flow_type, lab_id, port, client_port, db_port)
-        
+                command_ok = execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, False, flow_type, lab_id, port, client_port, db_port)
+                if not command_ok:
+                    raise RuntimeError(f"Failed to execute run command: {replaced_command}")
+            if flow_type == FLOW_TYPE_CUSTOM:
+                wait_for_custom_lab_ready(user_linux_name)
+
         return jsonify({
             'message': 'Lab started successfully',
             'lab_id': lab_id,
@@ -1996,7 +2000,11 @@ def _run_lab_commands(lab_id, lab_session_id):
                 print(f"Raw run command: {command}")
                 replaced_command = replace_lab_parameters(lab, command, user)
                 print(f"Executing run command: {replaced_command}")
-                execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, True, flow_type, lab_id, lab_session.web_port, lab_session.client_port, lab_session.db_port)
+                command_ok = execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, True, flow_type, lab_id, lab_session.web_port, lab_session.client_port, lab_session.db_port)
+                if not command_ok:
+                    raise RuntimeError(f"Failed to execute run command: {replaced_command}")
+            if flow_type == FLOW_TYPE_CUSTOM:
+                wait_for_custom_lab_ready(user_linux_name)
 
         print("======= SEND START AND READY EVENT")  
         socketio.emit('terminal_ready', {'status': 'ready'})
@@ -2012,8 +2020,8 @@ def _run_lab_commands(lab_id, lab_session_id):
         if not start_command:
             start_command = f'cd {working_dir} && newgrp {linux_username}'
         else:
-            containerName = start_command.replace(STUDENT_NAME_LAB_PARAMETER, linux_username)
-            start_command = f'sudo docker_client_shell_{linux_username}_{containerName}'
+            containerName = start_command.replace(STUDENT_ID_LAB_PARAMETER, linux_username)
+            start_command = f'sudo docker_client_shell_{containerName}'
         # Create terminal session
         latest_terminal = (
             TerminalSession.query
@@ -2099,7 +2107,12 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
             value = value.replace(DB_TEST_PORT_PARAM, str(db_port))
             value = value.replace(CLIENT_TEST_PORT_PARAM, str(client_port))
             if "${dockerExecCommand}" in param.parameter_name:
-                create_student_docker(user_linux_name, user_linux_name, value)
+                create_student_docker(
+                    user_linux_name,
+                    user_linux_name,
+                    value,
+                    get_target_node_for_lab(lab)
+                )
                 continue
             network = None
             if LAB_NETWORK_MASK_PARAMETER in value:
@@ -2409,6 +2422,50 @@ def replace_lab_parameters(lab, command, user):
     
     return replaced_command
 
+def wait_for_custom_lab_ready(user_linux_name, timeout=120, interval=10):
+    """Wait until all Docker services for this student report Running."""
+    import time
+
+    student_id = user_linux_name.replace("student_", "")
+    deadline = time.time() + timeout
+    last_status = "No matching Docker service state found yet"
+
+    while time.time() < deadline:
+        service_list_cmd = f'docker service ls --format "{{{{.Name}}}}" | grep {student_id}'
+        service_result = subprocess.run(
+            service_list_cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        services = [line.strip() for line in service_result.stdout.splitlines() if line.strip()]
+        if services:
+            states = []
+            for service_name in services:
+                state_cmd = f'docker service ps {service_name} --format "{{{{.CurrentState}}}}"'
+                state_result = subprocess.run(
+                    state_cmd,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                states.extend(
+                    line.strip() for line in state_result.stdout.splitlines() if line.strip()
+                )
+
+            if states and all(state.startswith("Running") for state in states):
+                print(f"Custom lab services are ready for {student_id}: {states}")
+                return True
+
+            last_status = "; ".join(states) if states else "Service found but no state output yet"
+
+        time.sleep(interval)
+
+    raise TimeoutError(f"Custom lab services were not ready in 120 seconds: {last_status}")
+
 def execute_run_command(user_linux_name, run_command, working_directory, clean_docker_only, flow_type=None, lab_id=None, web_port=None, client_port=None, db_port=None):
     """Execute run command when lab starts"""
     try:
@@ -2502,12 +2559,27 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
     except Exception as e:
         print(f"Error executing run command: {e}")
         return False
+def get_target_node_for_lab(lab):
+    """Return target node for CUSTOM labs based on lab id."""
+    flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
+    if flow_type != FLOW_TYPE_CUSTOM or getattr(lab, 'id', None) is None:
+        return None
+    return 98 if lab.id % 2 == 1 else 99
+
+def get_target_ip_for_node(target_node):
+    """Map supported target nodes to their backend IPs."""
+    return {
+        98: "192.168.187.98",
+        99: "192.168.187.99",
+    }.get(target_node)
+
 SCRIPT_TEMPLATE = r"""#!/bin/bash
-exec docker exec -it ${containerName} bash
+ssh -t -i /home/hoangnth/labtainer/labs/lab-ssh-key student@${targetIp} "docker exec -it \$(docker ps -q -f name=${containerName} | head -n 1) bash"
 """
-def     create_student_docker(username, studentId, containerName):
+def     create_student_docker(username, studentId, containerName, target_node=None):
     # 3. Tạo file script riêng
-    script_path = f"/usr/local/bin/docker_client_shell_{username}_{containerName}"
+    containerName = containerName.replace(STUDENT_ID_LAB_PARAMETER, studentId)
+    script_path = f"/usr/local/bin/docker_client_shell_{containerName}"
     if os.path.exists(script_path):
         run(f"sudo rm -f {script_path}")
 
@@ -2516,8 +2588,12 @@ def     create_student_docker(username, studentId, containerName):
     temp_script_file = f"/tmp/tmp_script_{containerName}.sh"
     run(f"sudo touch {temp_script_file}")
     run(f"sudo chmod 777 {temp_script_file}")
+    target_ip = get_target_ip_for_node(target_node)
+    script_content = SCRIPT_TEMPLATE.replace("${containerName}", containerName)
+    if target_ip:
+        script_content = script_content.replace("${targetIp}", target_ip)
     with open(f"{temp_script_file}", "w") as f:
-        f.write(SCRIPT_TEMPLATE.replace("${containerName}", containerName))
+        f.write(script_content)
 
     run(f"sudo mv {temp_script_file} {script_path}")
     run(f"sudo chmod 755 {script_path}")
@@ -2541,7 +2617,7 @@ def     create_student_docker(username, studentId, containerName):
     print("\nDONE! Student created successfully:")
     print(f"- Username: {username}")
     print(f"- Student ID: {studentId}")
-    print(f"- Script: sudo docker_client_shell_{username}_{containerName}")
+    print(f"- Script: {script_path}")
 
 def run(cmd):
     print(f"--> {cmd}")
@@ -3095,8 +3171,8 @@ def handle_start_terminal(data):
     if not start_command:
         start_command = f'cd {working_dir} && newgrp {linux_username}'
     else:
-        containerName = start_command.replace(STUDENT_NAME_LAB_PARAMETER, linux_username)
-        start_command = f'sudo docker_client_shell_{linux_username}_{containerName}'
+        containerName = start_command.replace(STUDENT_ID_LAB_PARAMETER, linux_username)
+        start_command = f'sudo docker_client_shell_{containerName}'
     # Create terminal session
     terminal_session = TerminalSession(
         session_id=session_id,
