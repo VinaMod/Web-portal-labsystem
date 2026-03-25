@@ -1885,6 +1885,7 @@ def start_lab(lab_id):
                 replaced_command = replace_lab_parameters(lab, command, user)
                 print(f"Executing run command: {replaced_command}")
                 command_ok = execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, False, flow_type, lab_id, port, client_port, db_port)
+                print(f"command_ok for '{replaced_command}': {command_ok}")
                 if not command_ok:
                     raise RuntimeError(f"Failed to execute run command: {replaced_command}")
             if flow_type == FLOW_TYPE_CUSTOM:
@@ -2013,6 +2014,7 @@ def _run_lab_commands(lab_id, lab_session_id):
                 parameter_name='${dockerExecCommand}'
         ).first()
         linux_username = get_student_username(user.email)
+        student_id = linux_username.replace("student_", "")
         working_dir = f'/home/{linux_username}' or '/tmp'
         values = json.loads(start_command_param.parameter_values) if start_command_param else None
         start_command = values[0] if values else None
@@ -2020,7 +2022,7 @@ def _run_lab_commands(lab_id, lab_session_id):
         if not start_command:
             start_command = f'cd {working_dir} && newgrp {linux_username}'
         else:
-            containerName = start_command.replace(STUDENT_ID_LAB_PARAMETER, linux_username)
+            containerName = start_command.replace(STUDENT_ID_LAB_PARAMETER, student_id)
             start_command = f'sudo docker_client_shell_{containerName}'
         # Create terminal session
         latest_terminal = (
@@ -2432,6 +2434,7 @@ def wait_for_custom_lab_ready(user_linux_name, timeout=120, interval=10):
 
     while time.time() < deadline:
         service_list_cmd = f'docker service ls --format "{{{{.Name}}}}" | grep {student_id}'
+        print(f"[wait_for_custom_lab_ready] Checking services with command: {service_list_cmd}")
         service_result = subprocess.run(
             service_list_cmd,
             shell=True,
@@ -2439,12 +2442,16 @@ def wait_for_custom_lab_ready(user_linux_name, timeout=120, interval=10):
             text=True,
             timeout=30
         )
+        print(f"[wait_for_custom_lab_ready] service ls stdout: {service_result.stdout.strip()}")
+        if service_result.stderr.strip():
+            print(f"[wait_for_custom_lab_ready] service ls stderr: {service_result.stderr.strip()}")
 
         services = [line.strip() for line in service_result.stdout.splitlines() if line.strip()]
         if services:
             states = []
             for service_name in services:
                 state_cmd = f'docker service ps {service_name} --format "{{{{.CurrentState}}}}"'
+                print(f"[wait_for_custom_lab_ready] Checking state with command: {state_cmd}")
                 state_result = subprocess.run(
                     state_cmd,
                     shell=True,
@@ -2452,6 +2459,9 @@ def wait_for_custom_lab_ready(user_linux_name, timeout=120, interval=10):
                     text=True,
                     timeout=30
                 )
+                print(f"[wait_for_custom_lab_ready] service ps stdout for {service_name}: {state_result.stdout.strip()}")
+                if state_result.stderr.strip():
+                    print(f"[wait_for_custom_lab_ready] service ps stderr for {service_name}: {state_result.stderr.strip()}")
                 states.extend(
                     line.strip() for line in state_result.stdout.splitlines() if line.strip()
                 )
@@ -3164,6 +3174,7 @@ def handle_start_terminal(data):
             parameter_name='${dockerExecCommand}'
     ).first()
     linux_username = get_student_username(user.email)
+    student_id = linux_username.replace("student_", "")
     working_dir = f'/home/{linux_username}' or '/tmp'
     values = json.loads(start_command_param.parameter_values) if start_command_param else None
     start_command = values[0] if values else None
@@ -3171,7 +3182,7 @@ def handle_start_terminal(data):
     if not start_command:
         start_command = f'cd {working_dir} && newgrp {linux_username}'
     else:
-        containerName = start_command.replace(STUDENT_ID_LAB_PARAMETER, linux_username)
+        containerName = start_command.replace(STUDENT_ID_LAB_PARAMETER, student_id)
         start_command = f'sudo docker_client_shell_{containerName}'
     # Create terminal session
     terminal_session = TerminalSession(
