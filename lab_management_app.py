@@ -2789,6 +2789,12 @@ def _submit_lab(lab_id, lab_session_id):
         }), 400
 
     try:
+        print(
+            f"[submit_lab] Start scoring: "
+            f"lab_id={lab_id}, lab_session_id={lab_session_id}, user_id={user_id}, "
+            f"num_checkpoints={lab.num_checkpoints}, received_answers={len(checkpoint_answers)}"
+        )
+
         # Validate and score checkpoints
         results = validate_checkpoints_with_cached_random(lab, lab_session, checkpoint_answers, user)
         
@@ -2802,6 +2808,11 @@ def _submit_lab(lab_id, lab_session_id):
             if result['passed']:
                 earned_points += result['points']
                 passed_checkpoints += 1
+            print(
+                f"[submit_lab] Checkpoint result: checkpoint={result.get('checkpoint')}, "
+                f"passed={result.get('passed')}, earned_points={result.get('earned_points')}, "
+                f"max_points={result.get('points')}, message={result.get('message')}"
+            )
         
         # Calculate final score (scale to max_score)
         if total_points > 0:
@@ -2813,6 +2824,11 @@ def _submit_lab(lab_id, lab_session_id):
         minimum_score = lab.minimum_score or 0
         passed = score >= minimum_score
         status = 'completed' if passed else 'failed'
+        print(
+            f"[submit_lab] Final score: earned_points={earned_points}, total_points={total_points}, "
+            f"score={score}, max_score={lab.max_score}, minimum_score={minimum_score}, "
+            f"passed={passed}, status={status}"
+        )
         
         # Update lab session
         lab_session.checkpoint_answers = json.dumps(checkpoint_answers)
@@ -2823,6 +2839,7 @@ def _submit_lab(lab_id, lab_session_id):
         lab_session.submission_notes = data.get('notes', '')
         
         db.session.commit()
+        print(f"[submit_lab] Saved lab session result: lab_session_id={lab_session.id}, status={lab_session.status}, score={lab_session.score}")
         
         # Release ports
         if lab_session.web_port:
@@ -3057,6 +3074,11 @@ def validate_checkpoints_with_cached_random(lab, lab_session, checkpoint_answers
     results = []
     student_id = get_student_username(user.email).replace("student_", "")
     cached_random_string = get_cached_lab_start_random_string(student_id)
+    print(
+        f"[validate_checkpoints] Start: lab_id={lab.id}, lab_session_id={lab_session.id}, "
+        f"student_id={student_id}, answers={len(checkpoint_answers)}, "
+        f"cached_random_exists={bool(cached_random_string)}"
+    )
 
     for i, answer in enumerate(checkpoint_answers):
         if i < len(rules):
@@ -3083,30 +3105,48 @@ def validate_checkpoints_with_cached_random(lab, lab_session, checkpoint_answers
             'earned_points': 0,
             'message': ''
         }
+        print(
+            f"[validate_checkpoints] Checkpoint {i + 1}: "
+            f"decode_method={decode_method}, case_sensitive={case_sensitive}, "
+            f"points={points}, use_auto_flag={use_auto_flag}"
+        )
+        print(f"[validate_checkpoints] Checkpoint {i + 1}: raw_answer={answer}")
 
         try:
             decoded = decode_checkpoint_answer(answer, decode_method)
             result['decoded_answer'] = decoded
+            print(f"[validate_checkpoints] Checkpoint {i + 1}: decoded_answer={decoded}")
 
             generated_flag, resolved_expected_answer = build_generated_flag(expected_answer, user)
             lab_session.generated_flag = generated_flag
+            print(
+                f"[validate_checkpoints] Checkpoint {i + 1}: "
+                f"generated_flag={generated_flag}, resolved_expected_answer={resolved_expected_answer}"
+            )
 
             expected_value = str(resolved_expected_answer).strip()
             student_value = str(decoded).strip()
+            submitted_main_value, submitted_random_string = split_submitted_flag_and_random(student_value)
+            result['submitted_random_string'] = submitted_random_string
+
+            if not cached_random_string:
+                result['message'] = f'Incorrect (0/{points} points)'
+                print(f"[validate_checkpoints] Checkpoint {i + 1}: missing cached random string")
+                results.append(result)
+                continue
+
+            cached_random_value = str(cached_random_string).strip()
 
             if use_auto_flag:
-                submitted_flag, submitted_random_string = split_submitted_flag_and_random(student_value)
+                submitted_flag = submitted_main_value
                 result['submitted_flag'] = submitted_flag
-                result['submitted_random_string'] = submitted_random_string
                 result['expected_answer'] = '[Auto-generated Flag + Random String]'
-
-                if not cached_random_string:
-                    result['message'] = 'Random string not found in cache. Please start or restart the lab again.'
-                    results.append(result)
-                    continue
+                print(
+                    f"[validate_checkpoints] Checkpoint {i + 1}: auto_flag_mode, "
+                    f"submitted_flag={submitted_flag}, submitted_random_present={bool(submitted_random_string)}"
+                )
 
                 expected_flag_value = str(lab_session.generated_flag or expected_value).strip()
-                cached_random_value = str(cached_random_string).strip()
                 submitted_flag_value = str(submitted_flag).strip()
                 submitted_random_value = str(submitted_random_string).strip()
 
@@ -3120,12 +3160,32 @@ def validate_checkpoints_with_cached_random(lab, lab_session, checkpoint_answers
                     submitted_flag_value == expected_flag_value and
                     submitted_random_value == cached_random_value
                 )
+                print(
+                    f"[validate_checkpoints] Checkpoint {i + 1}: auto_flag_compare, "
+                    f"flag_match={submitted_flag_value == expected_flag_value}, "
+                    f"random_match={submitted_random_value == cached_random_value}, "
+                    f"is_correct={is_correct}"
+                )
             else:
-                if not case_sensitive:
-                    student_value = student_value.lower()
-                    expected_value = expected_value.lower()
+                submitted_answer_value = str(submitted_main_value).strip()
+                submitted_random_value = str(submitted_random_string).strip()
 
-                is_correct = student_value == expected_value
+                if not case_sensitive:
+                    submitted_answer_value = submitted_answer_value.lower()
+                    expected_value = expected_value.lower()
+                    cached_random_value = cached_random_value.lower()
+                    submitted_random_value = submitted_random_value.lower()
+
+                is_correct = (
+                    submitted_answer_value == expected_value and
+                    submitted_random_value == cached_random_value
+                )
+                print(
+                    f"[validate_checkpoints] Checkpoint {i + 1}: plain_compare, "
+                    f"student_value={submitted_answer_value}, expected_value={expected_value}, "
+                    f"random_match={submitted_random_value == cached_random_value}, "
+                    f"is_correct={is_correct}"
+                )
 
             if is_correct:
                 result['passed'] = True
@@ -3133,11 +3193,18 @@ def validate_checkpoints_with_cached_random(lab, lab_session, checkpoint_answers
                 result['message'] = f'Correct! (+{points} points)'
             else:
                 result['message'] = f'Incorrect (0/{points} points)'
+            print(
+                f"[validate_checkpoints] Checkpoint {i + 1}: final_result, "
+                f"passed={result['passed']}, earned_points={result['earned_points']}, "
+                f"message={result['message']}"
+            )
         except Exception as e:
             result['message'] = f'Decode error: {str(e)}'
+            print(f"[validate_checkpoints] Checkpoint {i + 1}: exception={e}")
 
         results.append(result)
 
+    print(f"[validate_checkpoints] Finished: total_results={len(results)}")
     return results
 
 def decode_checkpoint_answer(answer, method):
