@@ -2177,6 +2177,7 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
             value = value.replace(WEB_TEST_PORT_PARAM, str(port))
             value = value.replace(DB_TEST_PORT_PARAM, str(db_port))
             value = value.replace(CLIENT_TEST_PORT_PARAM, str(client_port))
+            value = value.replace("${randomKey}", get_cached_lab_start_random_string(user_linux_name.replace("student_", "")))
             if "${dockerExecCommand}" in param.parameter_name:
                 create_student_docker(
                     user_linux_name,
@@ -2223,6 +2224,9 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
         if STUDENT_NAME_LAB_PARAMETER in param.file_path:
             new_relative_path = param.file_path.replace(
                 STUDENT_NAME_LAB_PARAMETER, user_linux_name
+            )
+            new_relative_path = new_relative_path.file_path.replace(
+                STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_", "")
             )
             final_file_path = os.path.join(student_folder, new_relative_path)
 
