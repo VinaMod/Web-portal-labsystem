@@ -2250,8 +2250,6 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
                 print(f"🔄 Renamed file: {param.file_path} → {new_relative_path}")
             else:
                 print(f"⚠️ Cannot rename, file not found: {original_file_path}")
-                continue
-
 
         # đọc file sau khi rename (final_file_path)
         if not os.path.exists(final_file_path):
