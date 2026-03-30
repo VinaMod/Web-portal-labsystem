@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
+﻿from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -21,6 +21,9 @@ import traceback
 import signal
 from dotenv import load_dotenv
 import getpass
+import secrets
+import threading
+import hashlib
 
 load_dotenv()  # tự động tìm file .env trong cwd
 
@@ -62,6 +65,61 @@ db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
+lab_start_random_cache = {}
+lab_start_random_cache_lock = threading.Lock()
+
+
+def generate_lab_start_random_string(length=16):
+    return secrets.token_hex(length // 2)
+
+
+def cache_lab_start_random_string(student_id, random_string):
+    with lab_start_random_cache_lock:
+        lab_start_random_cache[str(student_id)] = random_string
+
+
+def get_cached_lab_start_random_string(student_id):
+    with lab_start_random_cache_lock:
+        return lab_start_random_cache.get(str(student_id))
+
+
+def split_submitted_flag_and_random(submitted_value):
+    submitted_value = (submitted_value or "").strip()
+    if not submitted_value:
+        return "", ""
+
+    if submitted_value.startswith("FLAG{"):
+        closing_brace_index = submitted_value.find("}")
+        if closing_brace_index != -1:
+            flag_part = submitted_value[:closing_brace_index + 1].strip()
+            random_part = submitted_value[closing_brace_index + 1:].strip()
+            random_part = random_part.lstrip(":|#- ")
+            return flag_part, random_part
+
+    for separator in ("::", "|", ":", "#"):
+        if separator in submitted_value:
+            flag_part, random_part = submitted_value.rsplit(separator, 1)
+            return flag_part.strip(), random_part.strip()
+
+    return submitted_value, ""
+
+
+def build_generated_flag(expected_answer, user):
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        from backports.zoneinfo import ZoneInfo
+
+    user_email = user.email
+    username = get_student_username(user_email)
+    dt = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
+    date_str = dt.strftime("%d%m%Y")
+    resolved_expected_answer = str(expected_answer).replace(STUDENT_NAME_LAB_PARAMETER, username)
+    print("========== ", date_str, user_email, resolved_expected_answer)
+    flag_input = f"{date_str}_{user_email}_{resolved_expected_answer}"
+    flag_hash = hashlib.sha1(flag_input.encode()).hexdigest()
+    return f"FLAG{{{flag_hash}}}", resolved_expected_answer
+
 def _normalize_flow_type(flow_type):
     ft = (flow_type or FLOW_TYPE_LABTAINER).strip().upper()
     return ft if ft in (FLOW_TYPE_LABTAINER, FLOW_TYPE_CUSTOM) else FLOW_TYPE_LABTAINER
@@ -101,6 +159,7 @@ LAB_SUB_NETWORK_IP_PREFIX = "${labSubnetIpPrefix}"
 WEB_TEST_PORT_PARAM = "${webTestPort}"
 CLIENT_TEST_PORT_PARAM = "${clientTestPort}"
 DB_TEST_PORT_PARAM = "${dbTestPort}"
+LAB_RANDOM_STRING_PARAM = "${labRandomString}"
 
 # Flow Type Constants
 FLOW_TYPE_LABTAINER = "LABTAINER"
@@ -1790,6 +1849,7 @@ def start_lab(lab_id):
     
     print("PREPARE FOR LABS ", lab.name)
     user_linux_name = get_student_username(user.email) if user and user.email else f"student_{user_id}"
+    student_id = user_linux_name.replace("student_", "")
     
     enrollment = Enrollment.query.filter_by(
         user_id=user_id, course_id=lab.course_id, status='active'
@@ -1828,6 +1888,8 @@ def start_lab(lab_id):
     
     try:
         lab_session.last_accessed = datetime.utcnow()
+        lab_random_string = generate_lab_start_random_string()
+        cache_lab_start_random_string(student_id, lab_random_string)
         port = reserve_port(8000, 10000, user_linux_name)
         if not port:
             raise ValueError("No available web port for lab!")
@@ -1850,6 +1912,7 @@ def start_lab(lab_id):
         lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(DB_TEST_PORT_PARAM, str(db_port))
         lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
         lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
+        lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(LAB_RANDOM_STRING_PARAM, lab_random_string)
 
         flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
         base_url = request.host_url.rstrip('/')
@@ -1898,7 +1961,8 @@ def start_lab(lab_id):
             'flow_type': flow_type,
             'redirect_url': f'/lab/{lab.id}/{lab_session.id}/terminal?flow_type={flow_type}',
             'web_url': web_url,
-            'web_proxy_url': f'/{web_prefix}/{lab_id}/web/{port}/'
+            'web_proxy_url': f'/{web_prefix}/{lab_id}/web/{port}/',
+            'lab_random_string': lab_random_string
         })
     except Exception as e:
         db.session.rollback()
@@ -1927,6 +1991,7 @@ def _run_lab_commands(lab_id, lab_session_id):
     lab = lab_session.lab
     user = User.query.filter_by(id=user_id).first()
     user_linux_name = get_student_username(user.email)
+    student_id = user_linux_name.replace("student_", "")
     flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
     print("PREPARE FOR LABS ", lab.name)
     if not lab:
@@ -1951,6 +2016,8 @@ def _run_lab_commands(lab_id, lab_session_id):
         lab_session.started_at = datetime.utcnow()
 
     lab_session.last_accessed = datetime.utcnow()
+    lab_random_string = generate_lab_start_random_string()
+    cache_lab_start_random_string(student_id, lab_random_string)
     port = reserve_port(8000, 10000, user_linux_name)
     if not port:
         raise ValueError("No available port for lab!")
@@ -1968,6 +2035,7 @@ def _run_lab_commands(lab_id, lab_session_id):
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(CLIENT_TEST_PORT_PARAM, str(client_port))
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_",""))
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(STUDENT_NAME_LAB_PARAMETER, user_linux_name)
+    lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(LAB_RANDOM_STRING_PARAM, lab_random_string)
 
     flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
     base_url = request.host_url.rstrip('/')
@@ -2048,7 +2116,8 @@ def _run_lab_commands(lab_id, lab_session_id):
             'flow_type': flow_type,
             'redirect_url': f'/lab/{lab_id}/{lab_session.id}/terminal?flow_type={flow_type}',
             'web_url': web_url,
-            'web_proxy_url': f'/{web_prefix}/{lab_id}/web/{port}/'
+            'web_proxy_url': f'/{web_prefix}/{lab_id}/web/{port}/',
+            'lab_random_string': lab_random_string
         })
     except Exception as e:
         print(f"Error running lab commands: {e}")
@@ -2484,6 +2553,11 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
             TARGET_NODE = 98 if lab_id % 2 == 1 else 99
             # Add TARGET_NODE parameter to the run_command
             run_command = f"TARGET_NODE={TARGET_NODE} " + run_command
+            student_id = user_linux_name.replace("student_", "")
+            cached_random_string = get_cached_lab_start_random_string(student_id) or ""
+
+            # Expose the cached random string to run commands.
+            run_command = f'RANDOM_KEY="{cached_random_string}" ' + run_command
         
         # Replace port parameters in run_command
         if web_port is not None:
@@ -2715,7 +2789,7 @@ def _submit_lab(lab_id, lab_session_id):
 
     try:
         # Validate and score checkpoints
-        results = validate_checkpoints(lab, lab_session, checkpoint_answers, user)
+        results = validate_checkpoints_with_cached_random(lab, lab_session, checkpoint_answers, user)
         
         # Calculate score based on points from each checkpoint
         total_points = 0
@@ -2961,6 +3035,108 @@ def validate_checkpoints(lab, lab_session, checkpoint_answers, user):
         
         results.append(result)
     
+    return results
+
+
+def validate_checkpoints_with_cached_random(lab, lab_session, checkpoint_answers, user):
+    """
+    Validate checkpoint answers and require a cached random string for auto flags.
+
+    Expected submit format for auto-flag checkpoints:
+    - FLAG{...}::random_string
+    - FLAG{...}|random_string
+    - FLAG{...}:random_string
+    - FLAG{...}random_string
+    """
+    try:
+        rules = json.loads(lab.checkpoint_rules) if lab.checkpoint_rules else []
+    except Exception:
+        rules = []
+
+    results = []
+    student_id = get_student_username(user.email).replace("student_", "")
+    cached_random_string = get_cached_lab_start_random_string(student_id)
+
+    for i, answer in enumerate(checkpoint_answers):
+        if i < len(rules):
+            rule = rules[i]
+            decode_method = rule.get('decode_method', 'plain')
+            expected_answer = rule.get('expected_answer', '')
+            case_sensitive = rule.get('case_sensitive', False)
+            points = rule.get('points', 10)
+            use_auto_flag = rule.get('use_auto_flag', False)
+        else:
+            decode_method = 'plain'
+            expected_answer = ''
+            case_sensitive = False
+            points = 10
+            use_auto_flag = False
+
+        result = {
+            'checkpoint': i + 1,
+            'passed': False,
+            'student_answer': answer,
+            'decoded_answer': None,
+            'expected_answer': expected_answer,
+            'points': points,
+            'earned_points': 0,
+            'message': ''
+        }
+
+        try:
+            decoded = decode_checkpoint_answer(answer, decode_method)
+            result['decoded_answer'] = decoded
+
+            generated_flag, resolved_expected_answer = build_generated_flag(expected_answer, user)
+            lab_session.generated_flag = generated_flag
+
+            expected_value = str(resolved_expected_answer).strip()
+            student_value = str(decoded).strip()
+
+            if use_auto_flag:
+                submitted_flag, submitted_random_string = split_submitted_flag_and_random(student_value)
+                result['submitted_flag'] = submitted_flag
+                result['submitted_random_string'] = submitted_random_string
+                result['expected_answer'] = '[Auto-generated Flag + Random String]'
+
+                if not cached_random_string:
+                    result['message'] = 'Random string not found in cache. Please start or restart the lab again.'
+                    results.append(result)
+                    continue
+
+                expected_flag_value = str(lab_session.generated_flag or expected_value).strip()
+                cached_random_value = str(cached_random_string).strip()
+                submitted_flag_value = str(submitted_flag).strip()
+                submitted_random_value = str(submitted_random_string).strip()
+
+                if not case_sensitive:
+                    expected_flag_value = expected_flag_value.lower()
+                    cached_random_value = cached_random_value.lower()
+                    submitted_flag_value = submitted_flag_value.lower()
+                    submitted_random_value = submitted_random_value.lower()
+
+                is_correct = (
+                    submitted_flag_value == expected_flag_value and
+                    submitted_random_value == cached_random_value
+                )
+            else:
+                if not case_sensitive:
+                    student_value = student_value.lower()
+                    expected_value = expected_value.lower()
+
+                is_correct = student_value == expected_value
+
+            if is_correct:
+                result['passed'] = True
+                result['earned_points'] = points
+                result['message'] = f'Correct! (+{points} points)'
+            else:
+                result['message'] = f'Incorrect (0/{points} points)'
+        except Exception as e:
+            result['message'] = f'Decode error: {str(e)}'
+
+        results.append(result)
+
     return results
 
 def decode_checkpoint_answer(answer, method):
