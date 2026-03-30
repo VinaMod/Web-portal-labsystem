@@ -2222,8 +2222,7 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
 
         # 🔥 Nếu file_path chứa STUDENT_NAME_LAB_PARAMETER -> đổi tên fil
         if STUDENT_NAME_LAB_PARAMETER in param.file_path:
-            new_relative_path = param.file_path
-            .replace(
+            new_relative_path = param.file_path.replace(
                 STUDENT_NAME_LAB_PARAMETER, user_linux_name
             ).replace(
                 STUDENT_ID_LAB_PARAMETER, user_linux_name.replace("student_", "")
