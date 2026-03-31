@@ -2494,7 +2494,7 @@ def replace_lab_parameters(lab, command, user):
     
     return replaced_command
 
-def wait_for_custom_lab_ready(user_linux_name, timeout=120, interval=10):
+def wait_for_custom_lab_ready(user_linux_name, timeout=600, interval=10):
     """Wait until all Docker services for this student report Running."""
     import time
 
