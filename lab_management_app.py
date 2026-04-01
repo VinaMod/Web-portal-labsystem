@@ -2518,7 +2518,7 @@ def wait_for_custom_lab_ready(user_linux_name, timeout=600, interval=10):
 
         services = [line.strip() for line in service_result.stdout.splitlines() if line.strip()]
         if services:
-            states = []
+            latest_states = {}
             for service_name in services:
                 state_cmd = f'docker service ps {service_name} --format "{{{{.CurrentState}}}}"'
                 print(f"[wait_for_custom_lab_ready] Checking state with command: {state_cmd}")
@@ -2532,15 +2532,17 @@ def wait_for_custom_lab_ready(user_linux_name, timeout=600, interval=10):
                 print(f"[wait_for_custom_lab_ready] service ps stdout for {service_name}: {state_result.stdout.strip()}")
                 if state_result.stderr.strip():
                     print(f"[wait_for_custom_lab_ready] service ps stderr for {service_name}: {state_result.stderr.strip()}")
-                states.extend(
-                    line.strip() for line in state_result.stdout.splitlines() if line.strip()
-                )
 
-            if states and all(state.startswith("Running") for state in states):
-                print(f"Custom lab services are ready for {student_id}: {states}")
+                service_states = [line.strip() for line in state_result.stdout.splitlines() if line.strip()]
+                if service_states:
+                    # Use only the newest reported state (last line) for each service
+                    latest_states[service_name] = service_states[-1]
+
+            if latest_states and all(state.startswith("Running") for state in latest_states.values()):
+                print(f"Custom lab services are ready for {student_id}: {latest_states}")
                 return True
 
-            last_status = "; ".join(states) if states else "Service found but no state output yet"
+            last_status = "; ".join(f"{srv}:{st}" for srv, st in latest_states.items()) if latest_states else "Service found but no state output yet"
 
         time.sleep(interval)
 
