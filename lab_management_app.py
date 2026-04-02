@@ -201,7 +201,6 @@ def _metrics_after_request(response):
     return response
 
 
->>>>>>> 39f3f7faf97584dcd30d8ec78a6c87c145088d4b
 # ================================================================================
 
 
