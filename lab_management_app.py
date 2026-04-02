@@ -145,8 +145,6 @@ def metrics_endpoint():
 def healthz():
     return jsonify({'status': 'ok'}), 200
 
-<<<<<<< HEAD
-=======
 # ============================ Logging and Monitoring ============================
 LOG_DIR = os.getenv('LOG_DIR', 'logs')
 Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
