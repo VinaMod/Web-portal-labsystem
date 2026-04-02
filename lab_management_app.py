@@ -24,6 +24,17 @@ import getpass
 import secrets
 import threading
 import hashlib
+import logging
+from logging.handlers import RotatingFileHandler
+
+# Optional metrics, nếu chưa cài sẽ báo lỗi sớm trong môi trường dev
+try:
+    from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+except ImportError:
+    Counter = None
+    Histogram = None
+    generate_latest = None
+    CONTENT_TYPE_LATEST = None
 
 load_dotenv()  # tự động tìm file .env trong cwd
 
@@ -47,7 +58,7 @@ pymysql.install_as_MySQLdb()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
-print("DATABASE URL: ", os.getenv('DATABASE_URL'))
+logger.info("DATABASE URL: ", os.getenv('DATABASE_URL'))
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'mysql+pymysql://root:@localhost:3306/lab_management')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
@@ -57,7 +68,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 }
 
 # Google OAuth Config
-print("Google client id: ", os.getenv('GOOGLE_CLIENT_ID'))
+logger.info("Google client id: ", os.getenv('GOOGLE_CLIENT_ID'))
 app.config['GOOGLE_CLIENT_ID'] = os.getenv('GOOGLE_CLIENT_ID')
 app.config['GOOGLE_CLIENT_SECRET'] = os.getenv('GOOGLE_CLIENT_SECRET')
 
@@ -67,6 +78,91 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 lab_start_random_cache = {}
 lab_start_random_cache_lock = threading.Lock()
+
+# Flask request metrics middleware
+@app.before_request
+def before_request_metrics():
+    if REQUEST_COUNT and REQUEST_LATENCY:
+        request._start_time = datetime.utcnow()
+
+@app.after_request
+def after_request_metrics(response):
+    if REQUEST_COUNT and REQUEST_LATENCY and hasattr(request, '_start_time'):
+        method = request.method
+        endpoint = request.path
+        status_code = response.status_code
+        duration = (datetime.utcnow() - request._start_time).total_seconds()
+        REQUEST_COUNT.labels(method=method, endpoint=endpoint, http_status=status_code).inc()
+        REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(duration)
+    return response
+
+@app.route('/metrics')
+def metrics_endpoint():
+    if generate_latest is None:
+        return "Prometheus client is not installed.", 500
+    return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}
+
+@app.route('/healthz')
+def healthz():
+    return jsonify({'status': 'ok'}), 200
+
+# ============================ Logging and Monitoring ============================
+LOG_DIR = os.getenv('LOG_DIR', 'logs')
+Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
+log_file = os.path.join(LOG_DIR, 'lab_management.log')
+
+logger = logging.getLogger('lab_management_app')
+logger.setLevel(logging.INFO)
+
+file_handler = RotatingFileHandler(
+    log_file,
+    maxBytes=int(os.getenv('LOG_MAX_BYTES', 10 * 1024 * 1024)),
+    backupCount=int(os.getenv('LOG_BACKUP_COUNT', 5)),
+    encoding='utf-8'
+)
+formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s [%(funcName)s:%(lineno)d] %(message)s')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+# Kế thừa logger cho app
+def attach_app_logger(flask_app):
+    flask_app.logger.handlers = logger.handlers
+    flask_app.logger.setLevel(logger.level)
+    return flask_app
+
+app = attach_app_logger(app)
+
+# Prometheus metrics
+if Counter and Histogram:
+    REQUEST_COUNT = Counter('lab_app_http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'http_status'])
+    REQUEST_LATENCY = Histogram('lab_app_http_request_latency_seconds', 'HTTP request latency', ['method', 'endpoint'])
+    FUNCTION_ERRORS = Counter('lab_app_function_errors_total', 'Total function errors', ['function'])
+    LAB_STARTS = Counter('lab_app_lab_starts_total', 'Total lab starts')
+    LAB_SUBMISSIONS = Counter('lab_app_lab_submissions_total', 'Total lab submissions')
+else:
+    REQUEST_COUNT = REQUEST_LATENCY = FUNCTION_ERRORS = LAB_STARTS = LAB_SUBMISSIONS = None
+
+
+def _metrics_before_request():
+    request._start_time = datetime.utcnow()
+
+
+def _metrics_after_request(response):
+    if REQUEST_COUNT and REQUEST_LATENCY:
+        path = request.path
+        method = request.method
+        status = response.status_code
+        REQUEST_COUNT.labels(method=method, endpoint=path, http_status=status).inc()
+        duration = (datetime.utcnow() - getattr(request, '_start_time', datetime.utcnow())).total_seconds()
+        REQUEST_LATENCY.labels(method=method, endpoint=path).observe(duration)
+    return response
+
+
+# ================================================================================
 
 
 def generate_lab_start_random_string(length=16):
@@ -115,7 +211,7 @@ def build_generated_flag(expected_answer, user):
     dt = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
     date_str = dt.strftime("%d%m%Y")
     resolved_expected_answer = str(expected_answer).replace(STUDENT_NAME_LAB_PARAMETER, username)
-    print("========== ", date_str, user_email, resolved_expected_answer)
+    logger.info("========== ", date_str, user_email, resolved_expected_answer)
     flag_input = f"{date_str}_{user_email}_{resolved_expected_answer}"
     flag_hash = hashlib.sha1(flag_input.encode()).hexdigest()
     return f"FLAG{{{flag_hash}}}", resolved_expected_answer
@@ -171,10 +267,10 @@ os.makedirs(STUDENT_LABS_PATH, exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Log paths for debugging
-print(f"Lab Templates Path: {LAB_TEMPLATES_PATH}")
-print(f"Student Labs Path: {STUDENT_LABS_PATH}")
-print(f"Templates exist: {os.path.exists(LAB_TEMPLATES_PATH)}")
-print(f"Student labs exist: {os.path.exists(STUDENT_LABS_PATH)}")
+logger.info(f"Lab Templates Path: {LAB_TEMPLATES_PATH}")
+logger.info(f"Student Labs Path: {STUDENT_LABS_PATH}")
+logger.info(f"Templates exist: {os.path.exists(LAB_TEMPLATES_PATH)}")
+logger.info(f"Student labs exist: {os.path.exists(STUDENT_LABS_PATH)}")
 
 # Google OAuth Setup
 google = oauth.register(
@@ -262,7 +358,7 @@ class Lab(db.Model):
     @property
     def run_commands_list(self):
         """Return run commands as a list"""
-        print("Self run commands: ", self.run_commands)
+        logger.info("Self run commands: ", self.run_commands)
         if not self.run_commands:
             return []
 
@@ -1017,14 +1113,14 @@ def delete_user(user_id):
             success, message = delete_linux_user(linux_username, remove_home=True)
             
             if success:
-                print(f"✅ Deleted user {user_email} and Linux user {linux_username}")
+                logger.info(f"✅ Deleted user {user_email} and Linux user {linux_username}")
                 return jsonify({
                     'message': 'User and Linux user deleted successfully',
                     'linux_user_deleted': True,
                     'linux_username': linux_username
                 })
             else:
-                print(f"⚠️ User {user_email} deleted but Linux user deletion failed: {message}")
+                logger.info(f"⚠️ User {user_email} deleted but Linux user deletion failed: {message}")
                 return jsonify({
                     'message': 'User deleted but Linux user deletion failed',
                     'warning': message,
@@ -1173,7 +1269,7 @@ def upload_lab_pdf():
         })
     
     except Exception as e:
-        print(f"Error uploading PDF: {str(e)}")
+        logger.info(f"Error uploading PDF: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 # Lab Management
@@ -1601,7 +1697,7 @@ def delete_lab_session(session_id):
         try:
             shutil.rmtree(lab_session.student_folder)
         except Exception as e:
-            print(f"Warning: Could not delete folder {lab_session.student_folder}: {e}")
+            logger.info(f"Warning: Could not delete folder {lab_session.student_folder}: {e}")
     
     # Release ports
     if lab_session.web_port:
@@ -1635,7 +1731,7 @@ def create_linux_user(username, home_dir=None):
         # Check if user already exists
         try:
             subprocess.run(['id', username], check=True, capture_output=True)
-            print(f"User {username} already exists")
+            logger.info(f"User {username} already exists")
             return True, f"User {username} already exists"
         except subprocess.CalledProcessError:
             # User doesn't exist, create it
@@ -1657,7 +1753,7 @@ def create_linux_user(username, home_dir=None):
         result = subprocess.run(create_cmd, capture_output=True, text=True)
         if result.returncode != 0:
             error_msg = f"Failed to create user: {result.stderr}"
-            print(error_msg)
+            logger.info(error_msg)
             return False, error_msg
         
         # Set a default password (you should change this or use key-based auth)
@@ -1668,19 +1764,19 @@ def create_linux_user(username, home_dir=None):
         result = subprocess.run(passwd_cmd, input=passwd_input, capture_output=True, text=True)
         if result.returncode != 0:
             error_msg = f"Failed to set password: {result.stderr}"
-            print(error_msg)
+            logger.info(error_msg)
             return False, error_msg
         
         # Set appropriate permissions for home directory
         subprocess.run(['sudo', 'chmod', '750', home_dir], check=True)
         subprocess.run(['sudo', 'chown', f'{username}:{username}', home_dir], check=True)
         
-        print(f"✅ Created Linux user: {username} with home: {home_dir}")
+        logger.info(f"✅ Created Linux user: {username} with home: {home_dir}")
         return True, f"User {username} created successfully"
         
     except Exception as e:
         error_msg = f"Error creating Linux user {username}: {e}"
-        print(error_msg)
+        logger.info(error_msg)
         traceback.print_exc()
         return False, error_msg
 
@@ -1714,15 +1810,15 @@ def delete_linux_user(username, remove_home=True):
         result = subprocess.run(delete_cmd, capture_output=True, text=True)
         if result.returncode != 0:
             error_msg = f"Failed to delete user: {result.stderr}"
-            print(error_msg)
+            logger.info(error_msg)
             return False, error_msg
         
-        print(f"✅ Deleted Linux user: {username}")
+        logger.info(f"✅ Deleted Linux user: {username}")
         return True, f"User {username} deleted successfully"
         
     except Exception as e:
         error_msg = f"Error deleting Linux user {username}: {e}"
-        print(error_msg)
+        logger.info(error_msg)
         return False, error_msg
 
 def get_student_username(user_email):
@@ -1750,7 +1846,7 @@ def clone_lab_folder(user_id, lab_id):
     user = db.session.get(User, user_id)
     
     if not lab or not user:
-        print(f"Error: Lab or User not found (lab_id={lab_id}, user_id={user_id})")
+        logger.warning('clone_lab_folder: Lab or User not found (lab_id=%s, user_id=%s)', lab_id, user_id)
         return False
     
     try:
@@ -1758,13 +1854,13 @@ def clone_lab_folder(user_id, lab_id):
         
         # Check if template exists
         if not os.path.exists(template_path):
-            print(f"Error: Template folder not found: {template_path}") 
+            logger.error('Template folder not found: %s', template_path)
         
         # Step 1: Create Linux user for this student
         linux_username = get_student_username(user.email)
         success, message = create_linux_user(linux_username)
         if not success:
-            print(f"Warning: Could not create Linux user: {message}")
+            logger.warning('Could not create Linux user for %s: %s', linux_username, message)
             # Continue anyway for development/testing
         
         # Create unique folder name for student
@@ -1773,15 +1869,15 @@ def clone_lab_folder(user_id, lab_id):
 
         # 🔁 Nếu đã tồn tại thì xóa để clone lại
         if os.path.exists(student_folder_path):
-            print(f"⚠️ Student folder exists, removing: {student_folder_path}")
+            logger.warning('Student folder exists, removing: %s', student_folder_path)
             shutil.rmtree(student_folder_path)
         shutil.copytree(template_path, student_folder_path)
-        print(f"Successfully cloned lab folder: {student_folder_path}")
+        logger.info('Successfully cloned lab folder: %s', student_folder_path)
         
         # Step 2: Set ownership to the Linux user (if on Linux/Unix)
         if platform.system() != 'Windows':
             try:
-                # print("CHOWN TO USER: ", linux_username)
+                # logger.info("CHOWN TO USER: ", linux_username)
                 # subprocess.run([
                 #     'sudo', 'chown', '-R', 
                 #     f'{linux_username}:{linux_username}', 
@@ -1795,7 +1891,7 @@ def clone_lab_folder(user_id, lab_id):
                 ], check=True, capture_output=True)
                 
                 current_user = getpass.getuser()
-                print("CURRENT USER: ", current_user)
+                logger.debug('CURRENT USER: %s', current_user)
                 # 4️⃣ Thêm user hiện tại vào group linux_username
                 subprocess.run([
                     'sudo', 'usermod', '-aG', linux_username, current_user
@@ -1805,9 +1901,9 @@ def clone_lab_folder(user_id, lab_id):
                 'sg', linux_username,
                 shell=True
                 )
-                print(f"✅ Set ownership to {linux_username} for {student_folder_path}")
+                logger.info('Set ownership to %s for %s', linux_username, student_folder_path)
             except Exception as e:
-                print(f"Warning: Could not set ownership: {e}")
+                logger.warning('Could not set ownership: %s', e)
         
         # Create or update lab session
         lab_session = LabSession.query.filter_by(user_id=user_id, lab_id=lab_id).first()
@@ -1818,18 +1914,19 @@ def clone_lab_folder(user_id, lab_id):
                 student_folder=student_folder_path
             )
             db.session.add(lab_session)
-            print(f"Created new lab session for user {user_id}, lab {lab_id}")
+            logger.info('clone_lab_folder: Created new lab session for user %s, lab %s', user_id, lab_id)
         else:
             lab_session.student_folder = student_folder_path
-            print(f"Updated existing lab session {lab_session.id}")
+            logger.info('clone_lab_folder: Updated existing lab session %s', lab_session.id)
         
         db.session.commit()
+        logger.info('clone_lab_folder: Completed for user %s lab %s', user_id, lab_id)
         return True
         
     except Exception as e:
-        print(f"Error cloning lab folder: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception('Error cloning lab folder lab_id=%s user_id=%s: %s', lab_id, user_id, e)
+        if FUNCTION_ERRORS:
+            FUNCTION_ERRORS.labels(function='clone_lab_folder').inc()
         db.session.rollback()
         return False
 
@@ -1837,17 +1934,23 @@ def clone_lab_folder(user_id, lab_id):
 @login_required
 def start_lab(lab_id):
     """Start a lab session"""
+    start_ts = datetime.utcnow()
+    logger.info('start_lab called: lab_id=%s, user_id=%s', lab_id, session['user']['id'])
+    if LAB_STARTS:
+        LAB_STARTS.inc()
+
     user_id = session['user']['id']
     
     # Get lab and verify user enrollment
     lab = db.session.get(Lab, lab_id)
     user = User.query.filter_by(id=user_id).first()
     if not lab:
+        logger.warning('start_lab failed: lab not found lab_id=%s user_id=%s', lab_id, user_id)
         return jsonify({'error': 'Lab not found'}), 404
     
     flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
     
-    print("PREPARE FOR LABS ", lab.name)
+    logger.info('PREPARE FOR LABS %s (flow_type=%s)', lab.name, flow_type)
     user_linux_name = get_student_username(user.email) if user and user.email else f"student_{user_id}"
     student_id = user_linux_name.replace("student_", "")
     
@@ -1856,6 +1959,7 @@ def start_lab(lab_id):
     ).first()
     
     if not enrollment:
+        logger.warning('start_lab unauthorized: user_id=%s not enrolled in course_id=%s', user_id, lab.course_id)
         return jsonify({'error': 'Not enrolled in this course'}), 403
     
     # Get or create lab session
@@ -1865,7 +1969,7 @@ def start_lab(lab_id):
     # Clone lab folder only for LABTAINER flow_type
     if flow_type == FLOW_TYPE_LABTAINER:
         if not clone_lab_folder(user_id, lab_id):
-            print(f"Failed to clone lab folder for user {user_id}, lab {lab_id}")
+            logger.info(f"Failed to clone lab folder for user {user_id}, lab {lab_id}")
             return jsonify({'error': 'Failed to setup lab environment. Please check if the lab template exists.'}), 500
 
     # Fetch or create the session
@@ -1879,7 +1983,7 @@ def start_lab(lab_id):
         )
         db.session.add(lab_session)
         db.session.commit()
-        print(f"Created new lab session for user {user_id}, lab {lab_id} ({'with folder' if student_folder else 'no folder'})")
+        logger.info('Created new lab session for user %s, lab %s (%s)', user_id, lab_id, 'with folder' if student_folder else 'no folder')
     
     # Update session status
     if lab_session.status == 'not_started':
@@ -1905,7 +2009,7 @@ def start_lab(lab_id):
         lab_session.client_port = client_port
         lab_session.db_port = db_port
 
-        print("===================== WEB TEST RUN IN PORT ", port)
+        logger.info('start_lab web_port=%s client_port=%s db_port=%s student=%s', port, client_port, db_port, user_linux_name)
         output_template = lab.output_result or ""
         lab_session.success_start_lab_output = output_template.replace(WEB_TEST_PORT_PARAM, str(port))
         lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(CLIENT_TEST_PORT_PARAM, str(client_port))
@@ -1924,10 +2028,10 @@ def start_lab(lab_id):
             f"{base_url}/{web_prefix}/{lab_id}/web/{client_port}/"
         )
 
-        print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
+        logger.debug('start_lab output_result: %s', lab_session.success_start_lab_output)
 
         db.session.commit()
-        print("PREPARE FOR LABS ", lab.name)
+        logger.info('start_lab state update complete for lab=%s user=%s', lab.name, user_linux_name)
     
         # Apply parameter file modifications if specified
         if lab.lab_parameters and lab_session.student_folder:
@@ -1938,22 +2042,22 @@ def start_lab(lab_id):
         #     execute_build_command(user_linux_name, lab.build_command, lab_session.student_folder)
         
         # Execute run commands if specified
-        print(f"Student folder: {lab_session.student_folder}")
-        print(f"Raw command list: {lab.run_commands_list}")
+        logger.info('start_lab student_folder=%s run_commands=%s user=%s', lab_session.student_folder, lab.run_commands_list, user_linux_name)
         if lab.run_commands_list and lab_session.student_folder:
             # For qua từng command trong list
             for command in lab.run_commands_list:
                 # Thay thế tất cả parameters với random values
-                print(f"Raw run command: {command}")
+                logger.info('start_lab raw command: %s user=%s', command, user_linux_name)
                 replaced_command = replace_lab_parameters(lab, command, user)
-                print(f"Executing run command: {replaced_command}")
+                logger.info('start_lab executing command: %s user=%s', replaced_command, user_linux_name)
                 command_ok = execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, False, flow_type, lab_id, port, client_port, db_port)
-                print(f"command_ok for '{replaced_command}': {command_ok}")
+                logger.info('start_lab command_ok=%s for %s user=%s', command_ok, replaced_command, user_linux_name)
                 if not command_ok:
                     raise RuntimeError(f"Failed to execute run command: {replaced_command}")
             if flow_type == FLOW_TYPE_CUSTOM:
                 wait_for_custom_lab_ready(user_linux_name)
 
+        logger.info('start_lab success: lab_id=%s, lab_session_id=%s, user_id=%s, duration=%.3fs', lab_id, lab_session.id, user_id, (datetime.utcnow() - start_ts).total_seconds())
         return jsonify({
             'message': 'Lab started successfully',
             'lab_id': lab_id,
@@ -1966,16 +2070,19 @@ def start_lab(lab_id):
         })
     except Exception as e:
         db.session.rollback()
-        print(f"Error starting lab: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception('Error starting lab: %s', e)
+        if FUNCTION_ERRORS:
+            FUNCTION_ERRORS.labels(function='start_lab').inc()
         return jsonify({'error': 'Failed to start lab'}), 500
+
 def _run_lab_commands(lab_id, lab_session_id):
     """Internal helper for running lab commands.
 
     This supports both the new URL format (/api/lab/<lab_id>/<lab_session_id>/...)
     and the legacy URL format (/api/lab/<lab_session_id>/...).
     """
+    run_start = datetime.utcnow()
+    logger.info('run_lab_commands called: lab_id=%s, lab_session_id=%s, user_id=%s', lab_id, lab_session_id, session['user']['id'])
 
     user_id = session['user']['id']
 
@@ -1993,8 +2100,9 @@ def _run_lab_commands(lab_id, lab_session_id):
     user_linux_name = get_student_username(user.email)
     student_id = user_linux_name.replace("student_", "")
     flow_type = _normalize_flow_type(getattr(lab, 'flow_type', None))
-    print("PREPARE FOR LABS ", lab.name)
+    logger.info('run_lab_commands PREPARE FOR LABS %s user=%s', lab.name, user_linux_name)
     if not lab:
+        logger.warning('run_lab_commands lab not found lab_id=%s user=%s', lab_id, user_linux_name)
         return jsonify({'error': 'Lab not found'}), 404
 
     enrollment = Enrollment.query.filter_by(
@@ -2007,7 +2115,7 @@ def _run_lab_commands(lab_id, lab_session_id):
     # Get or create lab session
     if flow_type == FLOW_TYPE_LABTAINER:
         if not clone_lab_folder(user_id, lab_id):
-            print(f"Failed to clone lab folder for user {user_id}, lab {lab_id}")
+            logger.error('Failed to clone lab folder for user %s, lab %s', user_id, lab_id)
             return jsonify({'error': 'Failed to setup lab environment. Please check if the lab template exists.'}), 500
 
     # Update session status
@@ -2029,7 +2137,7 @@ def _run_lab_commands(lab_id, lab_session_id):
     lab_session.web_port = port
     lab_session.client_port = client_port
 
-    print("===================== WEB TEST RUN IN PORT ", port)
+    logger.info('run_lab_commands web_port=%s client_port=%s user=%s', port, client_port, user_linux_name)
     output_template = lab.output_result or ""
     lab_session.success_start_lab_output = output_template.replace(WEB_TEST_PORT_PARAM, str(port))
     lab_session.success_start_lab_output = lab_session.success_start_lab_output.replace(CLIENT_TEST_PORT_PARAM, str(client_port))
@@ -2046,10 +2154,10 @@ def _run_lab_commands(lab_id, lab_session_id):
         "${clientTestUrl}",
         f"{base_url}/{web_prefix}/{lab_id}/web/{client_port}/"
     )
-    print("===================== EXPECT OUTPUT RESULT ", lab_session.success_start_lab_output)
+    logger.debug('run_lab_commands expected output result: %s', lab_session.success_start_lab_output)
     try:
         db.session.commit()
-        print("PREPARE FOR LABS ", lab.name)
+        logger.info('run_lab_commands state commit complete for lab=%s user=%s', lab.name, user_linux_name)
 
         # Apply parameter file modifications if specified
         if lab.lab_parameters and lab_session.student_folder:
@@ -2060,22 +2168,22 @@ def _run_lab_commands(lab_id, lab_session_id):
         #     execute_build_command(user_linux_name, lab.build_command, lab_session.student_folder)
 
         # Execute run commands if specified
-        print(f"Student folder: {lab_session.student_folder}")
-        print(f"Raw command list: {lab.run_commands_list}")
+        logger.info(f"Student folder: {lab_session.student_folder}")
+        logger.info(f"Raw command list: {lab.run_commands_list}")
         if lab.run_commands_list and lab_session.student_folder:
             # For qua từng command trong list
             for command in lab.run_commands_list:
                 # Thay thế tất cả parameters với random values
-                print(f"Raw run command: {command}")
+                logger.info(f"Raw run command: {command}")
                 replaced_command = replace_lab_parameters(lab, command, user)
-                print(f"Executing run command: {replaced_command}")
+                logger.info(f"Executing run command: {replaced_command}")
                 command_ok = execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, True, flow_type, lab_id, lab_session.web_port, lab_session.client_port, lab_session.db_port)
                 if not command_ok:
                     raise RuntimeError(f"Failed to execute run command: {replaced_command}")
             if flow_type == FLOW_TYPE_CUSTOM:
                 wait_for_custom_lab_ready(user_linux_name)
 
-        print("======= SEND START AND READY EVENT")  
+        logger.info('run_lab_commands send start and ready event user=%s', user_linux_name)  
         socketio.emit('terminal_ready', {'status': 'ready'})
         labParams = LabParameter.query.filter_by(lab_id=lab_session.lab_id)
         start_command_param = labParams.filter_by(
@@ -2108,6 +2216,7 @@ def _run_lab_commands(lab_id, lab_session_id):
         )    
         handle_linux_start_terminal_console('/tmp', user_linux_name, start_command, latest_terminal.session_id, lab_session, terminal_session, needToConnectContainer)
 
+        logger.info('run_lab_commands success: lab_id=%s lab_session_id=%s user_id=%s duration=%.3fs', lab_id, lab_session_id, user_id, (datetime.utcnow() - run_start).total_seconds())
         return jsonify({
             'message': 'Lab commands executed successfully',
             'data': '',
@@ -2120,9 +2229,9 @@ def _run_lab_commands(lab_id, lab_session_id):
             'lab_random_string': lab_random_string
         })
     except Exception as e:
-        print(f"Error running lab commands: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception('Error running lab commands for lab_id=%s lab_session_id=%s user_id=%s: %s', lab_id, lab_session_id, user_id, e)
+        if FUNCTION_ERRORS:
+            FUNCTION_ERRORS.labels(function='_run_lab_commands').inc()
         return jsonify({'error': str(e)}), 500    
 
 
@@ -2143,6 +2252,8 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
     Modify files with parameter values when file_path is specified
     and rename file if file_path contains STUDENT_NAME_LAB_PARAMETER
     """
+    function_start = datetime.utcnow()
+    logger.info('apply_parameter_file_modifications called: lab_id=%s user_linux_name=%s', getattr(lab, 'id', None), user_linux_name)
     import random
     import os
 
@@ -2247,13 +2358,13 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
             # Đổi tên file (nếu file cũ tồn tại)
             if os.path.exists(original_file_path):
                 os.rename(original_file_path, final_file_path)
-                print(f"🔄 Renamed file: {param.file_path} → {new_relative_path}")
+                logger.info('Renamed file: %s -> %s', original_file_path, final_file_path)
             else:
-                print(f"⚠️ Cannot rename, file not found: {original_file_path}")
+                logger.warning('Cannot rename, file not found: %s', original_file_path)
 
         # đọc file sau khi rename (final_file_path)
         if not os.path.exists(final_file_path):
-            print(f"⚠️ File not found for parameter modification: {final_file_path}")
+            logger.warning('File not found for parameter modification: %s', final_file_path)
             continue
 
         try:
@@ -2268,11 +2379,16 @@ def apply_parameter_file_modifications(lab, student_folder, user_linux_name, por
             with open(final_file_path, 'w', encoding='utf-8') as f:
                 f.write(modified_content)
 
-            print(f"✅ Modified file: {final_file_path}")
-            print(f"   Replacements: {parameter_replacements}")
+            logger.info('Modified file: %s', final_file_path)
+            logger.debug('Replacements: %s', parameter_replacements)
 
         except Exception as e:
-            print(f"❌ Error modifying file {final_file_path}: {e}")
+            logger.exception('Error modifying file %s: %s', final_file_path, e)
+            if FUNCTION_ERRORS:
+                FUNCTION_ERRORS.labels(function='apply_parameter_file_modifications').inc()
+
+    logger.info('apply_parameter_file_modifications completed: lab_id=%s user_linux_name=%s duration=%.3fs', getattr(lab, 'id', None), user_linux_name, (datetime.utcnow() - function_start).total_seconds())
+
 
 def reserve_port(range_start, range_end, username=None):
     """Reserve an available port in the given range and mark username as owner"""
@@ -2281,11 +2397,12 @@ def reserve_port(range_start, range_end, username=None):
         Port.is_used == False
     ).with_for_update().first()
     if port:
-        print(f"Reserving port {port.port_number} for user {username}")
+        logger.info('Reserving port %s for user %s', port.port_number, username)
         port.is_used = True
         port.used_by = username
         db.session.commit()
         return port.port_number
+    logger.warning('No free port found in range %s-%s for user %s', range_start, range_end, username)
     return None
 
 def release_port(port_number=None, username=None):
@@ -2293,13 +2410,13 @@ def release_port(port_number=None, username=None):
     if port_number is not None:
         port = Port.query.filter_by(port_number=port_number).first()
         if port and port.is_used:
-            print(f"Releasing port {port_number} (was used by {port.used_by})")
+            logger.info('Releasing port %s (was used by %s)', port_number, port.used_by)
             port.is_used = False
             port.used_by = None
             db.session.commit()
-            print(f"Successfully released port {port_number}")
+            logger.info('Successfully released port %s', port_number)
             return True
-        print(f"Port {port_number} not found or not in use")
+        logger.warning('Port %s not found or not in use', port_number)
         return False
 
     if username:
@@ -2307,24 +2424,24 @@ def release_port(port_number=None, username=None):
         if not normalized.startswith('student_'):
             normalized = f'student_{normalized}'
 
-        print(f"Looking for ports used by {username} or {normalized}")
+        logger.info('Looking for ports used by %s or %s', username, normalized)
         ports = Port.query.filter(
             (Port.used_by == normalized) |
             (Port.used_by == username)
         ).all()
-        print(f"Found {len(ports)} ports for user {username}")
+        logger.info('Found %s ports for user %s', len(ports), username)
         released = 0
         for port in ports:
             if port.is_used:
-                print(f"Releasing port {port.port_number} (used by {port.used_by})")
+                logger.info('Releasing port %s (used by %s)', port.port_number, port.used_by)
                 port.is_used = False
                 port.used_by = None
                 released += 1
         if released > 0:
             db.session.commit()
-            print(f"Successfully released {released} ports for user {username}")
+            logger.info('Successfully released %s ports for user %s', released, username)
         else:
-            print(f"No ports to release for user {username}")
+            logger.info('No ports to release for user %s', username)
         return released
 
     return 0
@@ -2346,7 +2463,7 @@ def get_free_port(start=8000, end=8999):
 def rename_files_if_contains(folder_path, user_linux_name):
     # Kiểm tra folder tồn tại
     if not os.path.exists(folder_path):
-        print("❌ Folder không tồn tại!")
+        logger.warning('Folder không tồn tại: %s', folder_path)
         return
 
     # Lấy danh sách file trong folder
@@ -2360,15 +2477,15 @@ def rename_files_if_contains(folder_path, user_linux_name):
             new_file_path = os.path.join(folder_path, new_file_name)
 
             os.rename(old_file_path, new_file_path)
-            print(f"✔ Đổi: {file_name} → {new_file_name}")
+            logger.info(f"✔ Đổi: {file_name} → {new_file_name}")
 
 def rename_files_in_matching_folders(folder_path, search_text, replace_text):
-    print("====== PARAM FILE NAME ", search_text)
-    print("====== PARAM FILE NAME VALUE", replace_text)
+    logger.debug('PARAM FILE NAME %s', search_text)
+    logger.debug('PARAM FILE NAME VALUE %s', replace_text)
 
     # Kiểm tra folder gốc
     if not os.path.isdir(folder_path):
-        print(f"Folder không tồn tại: {folder_path}")
+        logger.info(f"Folder không tồn tại: {folder_path}")
         return
 
     # === 1) RENAME FILES TRONG CÁC FOLDER KHỚP SEARCH TEXT ===
@@ -2376,7 +2493,7 @@ def rename_files_in_matching_folders(folder_path, search_text, replace_text):
         subfolder_path = os.path.join(folder_path, entry)
 
         if os.path.isdir(subfolder_path) and search_text in entry:
-            print(f"⚡ Found folder: {entry}")
+            logger.info('Found folder: %s', entry)
 
             for filename in os.listdir(subfolder_path):
                 old_file_path = os.path.join(subfolder_path, filename)
@@ -2400,9 +2517,9 @@ def rename_files_in_matching_folders(folder_path, search_text, replace_text):
 
                         try:
                             os.rename(old_file_path, new_file_path)
-                            print(f"✔ Rename: {filename} → {new_filename}")
+                            logger.info('Renamed file in subfolder: %s -> %s', filename, new_filename)
                         except Exception as e:
-                            print(f"❌ Rename ERROR {filename}: {e}")
+                            logger.error('Rename error %s: %s', filename, e)
 
     # === 2) RENAME CHÍNH CÁC FOLDER KHỚP SEARCH TEXT ===
     for entry in os.listdir(folder_path):
@@ -2426,9 +2543,9 @@ def rename_files_in_matching_folders(folder_path, search_text, replace_text):
             if new_folder_name != entry:
                 try:
                     os.rename(old_folder_path, new_folder_path)
-                    print(f"📁 Folder rename: {entry} → {new_folder_name}")
+                    logger.info('Folder rename: %s -> %s', entry, new_folder_name)
                 except Exception as e:
-                    print(f"❌ Folder rename error {entry}: {e}")
+                    logger.error('Folder rename error %s: %s', entry, e)
 
 def replace_lab_parameters(lab, command, user):
     """
@@ -2446,9 +2563,9 @@ def replace_lab_parameters(lab, command, user):
     
     username = get_student_username(user.email)
     user_id = username.replace("student_","")
-    print("================ STUDENT_ID ============= ", user_id)
+    logger.debug('STUDENT_ID = %s', user_id)
     replaced_command = command.replace("${email}", user.email)
-    print("========================= ", replaced_command)
+    logger.debug('Initial replaced command: %s', replaced_command)
     replaced_command = replaced_command.replace(STUDENT_ID_LAB_PARAMETER, user_id)
     # For qua tất cả parameters của bài lab
     for param in lab.lab_parameters:
@@ -2490,7 +2607,7 @@ def replace_lab_parameters(lab, command, user):
         # Replace tất cả occurrences của parameter name = parameter value
         replaced_command = replaced_command.replace(parameter_name, str(random_value))
         
-        print(f"Replaced {parameter_name} with {random_value}")
+        logger.debug('Replaced %s with %s for user=%s', parameter_name, random_value, username)
     
     return replaced_command
 
@@ -2504,7 +2621,7 @@ def wait_for_custom_lab_ready(user_linux_name, timeout=600, interval=10):
 
     while time.time() < deadline:
         service_list_cmd = f'docker service ls --format "{{{{.Name}}}}" | grep {student_id}'
-        print(f"[wait_for_custom_lab_ready] Checking services with command: {service_list_cmd}")
+        logger.debug('[wait_for_custom_lab_ready] Checking services with command: %s', service_list_cmd)
         service_result = subprocess.run(
             service_list_cmd,
             shell=True,
@@ -2512,16 +2629,16 @@ def wait_for_custom_lab_ready(user_linux_name, timeout=600, interval=10):
             text=True,
             timeout=30
         )
-        print(f"[wait_for_custom_lab_ready] service ls stdout: {service_result.stdout.strip()}")
+        logger.debug('[wait_for_custom_lab_ready] service ls stdout: %s', service_result.stdout.strip())
         if service_result.stderr.strip():
-            print(f"[wait_for_custom_lab_ready] service ls stderr: {service_result.stderr.strip()}")
+            logger.warning('[wait_for_custom_lab_ready] service ls stderr: %s', service_result.stderr.strip())
 
         services = [line.strip() for line in service_result.stdout.splitlines() if line.strip()]
         if services:
             latest_states = {}
             for service_name in services:
                 state_cmd = f'docker service ps {service_name} --format "{{{{.CurrentState}}}}"'
-                print(f"[wait_for_custom_lab_ready] Checking state with command: {state_cmd}")
+                logger.debug('[wait_for_custom_lab_ready] Checking state with command: %s', state_cmd)
                 state_result = subprocess.run(
                     state_cmd,
                     shell=True,
@@ -2529,9 +2646,9 @@ def wait_for_custom_lab_ready(user_linux_name, timeout=600, interval=10):
                     text=True,
                     timeout=30
                 )
-                print(f"[wait_for_custom_lab_ready] service ps stdout for {service_name}: {state_result.stdout.strip()}")
+                logger.debug('[wait_for_custom_lab_ready] service ps stdout for %s: %s', service_name, state_result.stdout.strip())
                 if state_result.stderr.strip():
-                    print(f"[wait_for_custom_lab_ready] service ps stderr for {service_name}: {state_result.stderr.strip()}")
+                    logger.warning('[wait_for_custom_lab_ready] service ps stderr for %s: %s', service_name, state_result.stderr.strip())
 
                 service_states = [line.strip() for line in state_result.stdout.splitlines() if line.strip()]
                 if service_states:
@@ -2539,7 +2656,7 @@ def wait_for_custom_lab_ready(user_linux_name, timeout=600, interval=10):
                     latest_states[service_name] = service_states[-1]
 
             if latest_states and all(state.startswith("Running") for state in latest_states.values()):
-                print(f"Custom lab services are ready for {student_id}: {latest_states}")
+                logger.info('Custom lab services are ready for %s: %s', student_id, latest_states)
                 return True
 
             last_status = "; ".join(f"{srv}:{st}" for srv, st in latest_states.items()) if latest_states else "Service found but no state output yet"
@@ -2572,7 +2689,7 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
         
         # Dùng newgrp -c "<command>" để chạy command với group mới
         if flow_type == FLOW_TYPE_LABTAINER:
-            print("COMPOSE DOWN DOCKER CONTAINER ....")
+            logger.info("COMPOSE DOWN DOCKER CONTAINER ....")
             full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo docker compose down"'
             subprocess.run(
                 full_command,
@@ -2585,7 +2702,7 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
         last_folder = os.path.basename(working_directory)  # ví dụ: lab-1
         expected_cmd = f"rebuild {last_folder}"
         
-        print("================== expected_cmd ", expected_cmd)
+        logger.info("================== expected_cmd ", expected_cmd)
         if flow_type == FLOW_TYPE_LABTAINER:
             subprocess.run([
                     'sudo', 'chmod', '-R', '777', 
@@ -2601,7 +2718,7 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
         )
             full_command = f"cd ~/labtainer/labtainer-student && {run_command}"
         else:
-            print("CHOWN TO USER: ", user_linux_name)
+            logger.info("CHOWN TO USER: ", user_linux_name)
             if flow_type == FLOW_TYPE_LABTAINER: 
                 subprocess.run([
                 'sudo', 'chown', '-R', f'{user_linux_name}:{user_linux_name}', working_directory
@@ -2610,7 +2727,7 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
                 full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo {run_command}"'
             else:
                 full_command = f'cd {working_directory} && {run_command}'
-        print("============ FULL COMMAND ========== ", full_command)
+        logger.info("============ FULL COMMAND ========== ", full_command)
         result = subprocess.run(
             full_command,
             shell=True,
@@ -2619,11 +2736,11 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
             timeout=500
         )
         
-        print(f"Run command executed. Exit code: {result.returncode}")
+        logger.info(f"Run command executed. Exit code: {result.returncode}")
         if result.stdout:
-            print(f"Run output: {result.stdout}")
+            logger.info(f"Run output: {result.stdout}")
         if result.stderr:
-            print(f"Run errors: {result.stderr}")
+            logger.info(f"Run errors: {result.stderr}")
         if flow_type == FLOW_TYPE_LABTAINER:    
             subprocess.run([
                     'sudo', 'chmod', '-R', '750', 
@@ -2641,10 +2758,10 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
             )
         return result.returncode == 0
     except subprocess.TimeoutExpired:
-        print("Run command timed out")
+        logger.info("Run command timed out")
         return False
     except Exception as e:
-        print(f"Error executing run command: {e}")
+        logger.info(f"Error executing run command: {e}")
         return False
 def get_target_node_for_lab(lab):
     """Return target node for CUSTOM labs based on lab id."""
@@ -2701,16 +2818,16 @@ def     create_student_docker(username, studentId, containerName, target_node=No
     run(f"sudo chown root:root {sudoers_path}")
     run(f"sudo chmod 440 {sudoers_path}")
 
-    print("\nDONE! Student created successfully:")
-    print(f"- Username: {username}")
-    print(f"- Student ID: {studentId}")
-    print(f"- Script: {script_path}")
+    logger.info("\nDONE! Student created successfully:")
+    logger.info(f"- Username: {username}")
+    logger.info(f"- Student ID: {studentId}")
+    logger.info(f"- Script: {script_path}")
 
 def run(cmd):
-    print(f"--> {cmd}")
+    logger.info(f"--> {cmd}")
     result = subprocess.run(cmd, shell=True)
     if result.returncode != 0:
-        print("ERROR running:", cmd)
+        logger.info("ERROR running:", cmd)
         raise ValueError("ERROR WHEN CREATE DOCKER EXEC")
 def execute_build_command(user_linux_name, build_command, working_directory):
     """Execute build command in lab directory"""
@@ -2723,17 +2840,17 @@ def execute_build_command(user_linux_name, build_command, working_directory):
             text=True,
             timeout=30
         )
-        print(f"Build command executed. Exit code: {result.returncode}")
+        logger.info(f"Build command executed. Exit code: {result.returncode}")
         if result.stdout:
-            print(f"Build output: {result.stdout}")
+            logger.info(f"Build output: {result.stdout}")
         if result.stderr:
-            print(f"Build errors: {result.stderr}")
+            logger.info(f"Build errors: {result.stderr}")
         return result.returncode == 0
     except subprocess.TimeoutExpired:
-        print("Build command timed out")
+        logger.info("Build command timed out")
         return False
     except Exception as e:
-        print(f"Error executing build command: {e}")
+        logger.info(f"Error executing build command: {e}")
         return False
 
 @app.route('/lab/<int:lab_id>/<int:lab_session_id>/terminal')
@@ -2765,6 +2882,10 @@ def _submit_lab(lab_id, lab_session_id):
     Supports both new path format (/api/lab/<lab_id>/<lab_session_id>/submit)
     and legacy format (/api/lab/<lab_session_id>/submit).
     """
+    submit_start = datetime.utcnow()
+    logger.info('submit_lab called: lab_id=%s, lab_session_id=%s, user_id=%s', lab_id, lab_session_id, session['user']['id'])
+    if LAB_SUBMISSIONS:
+        LAB_SUBMISSIONS.inc()
 
     user_id = session['user']['id']
 
@@ -2791,7 +2912,7 @@ def _submit_lab(lab_id, lab_session_id):
         }), 400
 
     try:
-        print(
+        logger.info(
             f"[submit_lab] Start scoring: "
             f"lab_id={lab_id}, lab_session_id={lab_session_id}, user_id={user_id}, "
             f"num_checkpoints={lab.num_checkpoints}, received_answers={len(checkpoint_answers)}"
@@ -2810,7 +2931,7 @@ def _submit_lab(lab_id, lab_session_id):
             if result['passed']:
                 earned_points += result['points']
                 passed_checkpoints += 1
-            print(
+            logger.info(
                 f"[submit_lab] Checkpoint result: checkpoint={result.get('checkpoint')}, "
                 f"passed={result.get('passed')}, earned_points={result.get('earned_points')}, "
                 f"max_points={result.get('points')}, message={result.get('message')}"
@@ -2826,7 +2947,7 @@ def _submit_lab(lab_id, lab_session_id):
         minimum_score = lab.minimum_score or 0
         passed = score >= minimum_score
         status = 'completed' if passed else 'failed'
-        print(
+        logger.info(
             f"[submit_lab] Final score: earned_points={earned_points}, total_points={total_points}, "
             f"score={score}, max_score={lab.max_score}, minimum_score={minimum_score}, "
             f"passed={passed}, status={status}"
@@ -2841,7 +2962,7 @@ def _submit_lab(lab_id, lab_session_id):
         lab_session.submission_notes = data.get('notes', '')
         
         db.session.commit()
-        print(f"[submit_lab] Saved lab session result: lab_session_id={lab_session.id}, status={lab_session.status}, score={lab_session.score}")
+        logger.info('[submit_lab] Saved lab session result: lab_session_id=%s, status=%s, score=%s', lab_session.id, lab_session.status, lab_session.score)
         
         # Release ports
         if lab_session.web_port:
@@ -2850,6 +2971,8 @@ def _submit_lab(lab_id, lab_session_id):
             release_port(lab_session.client_port)
         if lab_session.db_port:
             release_port(lab_session.db_port)
+        
+        logger.info('submit_lab success: lab_id=%s lab_session_id=%s user_id=%s duration=%.3fs score=%s/%s passed=%s', lab_id, lab_session_id, user_id, (datetime.utcnow() - submit_start).total_seconds(), score, lab.max_score, passed)
         
         return jsonify({
             'message': 'Lab submitted successfully',
@@ -2867,9 +2990,9 @@ def _submit_lab(lab_id, lab_session_id):
         
     except Exception as e:
         db.session.rollback()
-        print(f"Error submitting lab: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception('Error submitting lab lab_id=%s lab_session_id=%s user_id=%s: %s', lab_id, lab_session_id, user_id, e)
+        if FUNCTION_ERRORS:
+            FUNCTION_ERRORS.labels(function='_submit_lab').inc()
         return jsonify({'error': str(e)}), 500
 
 
@@ -3017,14 +3140,14 @@ def validate_checkpoints(lab, lab_session, checkpoint_answers, user):
 
             # Ghép chuỗi giống hệt bash
             expected_answer = expected_answer.replace(STUDENT_NAME_LAB_PARAMETER, username)
-            print("========== ", date_str, user_email, expected_answer)
+            logger.info("========== ", date_str, user_email, expected_answer)
             flag_input = f"{date_str}_{user_email}_{expected_answer}"
 
             # Hash SHA1 giống bash
             flag_hash = hashlib.sha1(flag_input.encode()).hexdigest()
 
             lab_session.generated_flag = f"FLAG{{{flag_hash}}}"
-            print(f"Generated flag for lab session: {lab_session.generated_flag}")
+            logger.info(f"Generated flag for lab session: {lab_session.generated_flag}")
 
             # Determine expected value
             if use_auto_flag:
@@ -3041,8 +3164,8 @@ def validate_checkpoints(lab, lab_session, checkpoint_answers, user):
             if not case_sensitive:
                 student_value = student_value.lower()
                 expected_value = expected_value.lower()
-            print("STUDENT VALUE ", student_value)
-            print("EXPECTED VALUE ", expected_value)
+            logger.info("STUDENT VALUE ", student_value)
+            logger.info("EXPECTED VALUE ", expected_value)
             if student_value == expected_value:
                 result['passed'] = True
                 result['earned_points'] = points
@@ -3076,7 +3199,7 @@ def validate_checkpoints_with_cached_random(lab, lab_session, checkpoint_answers
     results = []
     student_id = get_student_username(user.email).replace("student_", "")
     cached_random_string = get_cached_lab_start_random_string(student_id)
-    print(
+    logger.info(
         f"[validate_checkpoints] Start: lab_id={lab.id}, lab_session_id={lab_session.id}, "
         f"student_id={student_id}, answers={len(checkpoint_answers)}, "
         f"cached_random_exists={bool(cached_random_string)}"
@@ -3107,21 +3230,21 @@ def validate_checkpoints_with_cached_random(lab, lab_session, checkpoint_answers
             'earned_points': 0,
             'message': ''
         }
-        print(
+        logger.info(
             f"[validate_checkpoints] Checkpoint {i + 1}: "
             f"decode_method={decode_method}, case_sensitive={case_sensitive}, "
             f"points={points}, use_auto_flag={use_auto_flag}"
         )
-        print(f"[validate_checkpoints] Checkpoint {i + 1}: raw_answer={answer}")
+        logger.info(f"[validate_checkpoints] Checkpoint {i + 1}: raw_answer={answer}")
 
         try:
             decoded = decode_checkpoint_answer(answer, decode_method)
             result['decoded_answer'] = decoded
-            print(f"[validate_checkpoints] Checkpoint {i + 1}: decoded_answer={decoded}")
+            logger.info(f"[validate_checkpoints] Checkpoint {i + 1}: decoded_answer={decoded}")
 
             generated_flag, resolved_expected_answer = build_generated_flag(expected_answer, user)
             lab_session.generated_flag = generated_flag
-            print(
+            logger.info(
                 f"[validate_checkpoints] Checkpoint {i + 1}: "
                 f"generated_flag={generated_flag}, resolved_expected_answer={resolved_expected_answer}"
             )
@@ -3133,7 +3256,7 @@ def validate_checkpoints_with_cached_random(lab, lab_session, checkpoint_answers
 
             if not cached_random_string:
                 result['message'] = f'Incorrect (0/{points} points)'
-                print(f"[validate_checkpoints] Checkpoint {i + 1}: missing cached random string")
+                logger.info(f"[validate_checkpoints] Checkpoint {i + 1}: missing cached random string")
                 results.append(result)
                 continue
 
@@ -3143,7 +3266,7 @@ def validate_checkpoints_with_cached_random(lab, lab_session, checkpoint_answers
                 submitted_flag = submitted_main_value
                 result['submitted_flag'] = submitted_flag
                 result['expected_answer'] = '[Auto-generated Flag + Random String]'
-                print(
+                logger.info(
                     f"[validate_checkpoints] Checkpoint {i + 1}: auto_flag_mode, "
                     f"submitted_flag={submitted_flag}, submitted_random_present={bool(submitted_random_string)}"
                 )
@@ -3162,7 +3285,7 @@ def validate_checkpoints_with_cached_random(lab, lab_session, checkpoint_answers
                     submitted_flag_value == expected_flag_value and
                     submitted_random_value == cached_random_value
                 )
-                print(
+                logger.info(
                     f"[validate_checkpoints] Checkpoint {i + 1}: auto_flag_compare, "
                     f"flag_match={submitted_flag_value == expected_flag_value}, "
                     f"random_match={submitted_random_value == cached_random_value}, "
@@ -3182,7 +3305,7 @@ def validate_checkpoints_with_cached_random(lab, lab_session, checkpoint_answers
                     submitted_answer_value == expected_value and
                     submitted_random_value == cached_random_value
                 )
-                print(
+                logger.info(
                     f"[validate_checkpoints] Checkpoint {i + 1}: plain_compare, "
                     f"student_value={submitted_answer_value}, expected_value={expected_value}, "
                     f"random_match={submitted_random_value == cached_random_value}, "
@@ -3195,18 +3318,18 @@ def validate_checkpoints_with_cached_random(lab, lab_session, checkpoint_answers
                 result['message'] = f'Correct! (+{points} points)'
             else:
                 result['message'] = f'Incorrect (0/{points} points)'
-            print(
+            logger.info(
                 f"[validate_checkpoints] Checkpoint {i + 1}: final_result, "
                 f"passed={result['passed']}, earned_points={result['earned_points']}, "
                 f"message={result['message']}"
             )
         except Exception as e:
             result['message'] = f'Decode error: {str(e)}'
-            print(f"[validate_checkpoints] Checkpoint {i + 1}: exception={e}")
+            logger.info(f"[validate_checkpoints] Checkpoint {i + 1}: exception={e}")
 
         results.append(result)
 
-    print(f"[validate_checkpoints] Finished: total_results={len(results)}")
+    logger.info(f"[validate_checkpoints] Finished: total_results={len(results)}")
     return results
 
 def decode_checkpoint_answer(answer, method):
@@ -3274,7 +3397,7 @@ active_terminals = {}  # {session_id: {'terminal_session_id': int, 'lab_session_
 @socketio.on('connect')
 def handle_connect():
     session_id = request.sid
-    print(f"Client connected: {session_id}")
+    logger.info(f"Client connected: {session_id}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -3292,10 +3415,10 @@ def handle_disconnect():
         socketio.emit('terminal_error', {'error': 'User not found'})
         return
     user_name = get_student_username(user.email)
-    print(f"Client disconnected: {session_id}")
-    print("=============== START CLEAN UP DOCKER OF " , user_name)
+    logger.info(f"Client disconnected: {session_id}")
+    logger.info("=============== START CLEAN UP DOCKER OF " , user_name)
     cleanup_docker_resources(user_name, False)
-    print("=============== END CLEAN UP DOCKER OF " , user_name)
+    logger.info("=============== END CLEAN UP DOCKER OF " , user_name)
 
     # Clean up terminal session and kill pty process
     if session_id in active_terminals:
@@ -3305,19 +3428,19 @@ def handle_disconnect():
         if 'pid' in terminal_info and terminal_info['pid']:
             try:
                 os.kill(terminal_info['pid'], signal.SIGTERM)
-                print(f"Killed pty process: {terminal_info['pid']}")
+                logger.info(f"Killed pty process: {terminal_info['pid']}")
             except ProcessLookupError:
-                print(f"Process {terminal_info['pid']} already dead")
+                logger.info(f"Process {terminal_info['pid']} already dead")
             except Exception as e:
-                print(f"Error killing process: {e}")
+                logger.info(f"Error killing process: {e}")
         
         # Close pty file descriptor
         if 'pty_fd' in terminal_info and terminal_info['pty_fd']:
             try:
                 os.close(terminal_info['pty_fd'])
-                print(f"Closed pty fd: {terminal_info['pty_fd']}")
+                logger.info(f"Closed pty fd: {terminal_info['pty_fd']}")
             except Exception as e:
-                print(f"Error closing pty fd: {e}")
+                logger.info(f"Error closing pty fd: {e}")
         
         try:
             terminal_session = db.session.get(TerminalSession, terminal_info['terminal_session_id'])
@@ -3325,7 +3448,7 @@ def handle_disconnect():
                 terminal_session.is_active = False
                 db.session.commit()
         except Exception as e:
-            print(f"Warning: Could not update terminal session on disconnect: {e}")
+            logger.info(f"Warning: Could not update terminal session on disconnect: {e}")
             db.session.rollback()
         finally:
             del active_terminals[session_id]
@@ -3344,12 +3467,12 @@ def cleanup_docker_resources(student_name, clean_docker_only):
 
             if containers.strip():
                 for c in containers.splitlines():
-                    print(f"Removing container: {c}")
+                    logger.info(f"Removing container: {c}")
                     subprocess.call(f"docker rm -f {c}", shell=True)
             else:
-                print(f"No containers found for {student_name}")
+                logger.info(f"No containers found for {student_name}")
         except Exception as e:
-            print(f"Error removing containers: {e}")
+            logger.info(f"Error removing containers: {e}")
 
         # Remove networks
         try:
@@ -3358,19 +3481,19 @@ def cleanup_docker_resources(student_name, clean_docker_only):
 
             if networks.strip():
                 for n in networks.splitlines():
-                    print(f"Removing network: {n}")
+                    logger.info(f"Removing network: {n}")
                     subprocess.call(f"docker network rm {n}", shell=True)
             else:
-                print(f"No networks found for {student_name}")
+                logger.info(f"No networks found for {student_name}")
         except Exception as e:
-            print(f"Error removing networks: {e}")
+            logger.info(f"Error removing networks: {e}")
 
         # Remove services
         try:
-            print(f"Removing services for {student_name}")
+            logger.info(f"Removing services for {student_name}")
             subprocess.run(f"docker service rm $(docker service ls --filter name={student_name} -q)", shell=True, capture_output=True)
         except Exception as e:
-            print(f"Error removing services: {e}")
+            logger.info(f"Error removing services: {e}")
 
         # Release ports held by this user (if any)
         if not clean_docker_only:
@@ -3379,12 +3502,12 @@ def cleanup_docker_resources(student_name, clean_docker_only):
                 if not student_username.startswith('student_'):
                     student_username = f'student_{student_username}'
                 released = release_ports_by_user(student_username)
-                print(f"Released {released} ports for user {student_username}")
+                logger.info(f"Released {released} ports for user {student_username}")
             except Exception as e:
-                print(f"Error releasing ports: {e}")
+                logger.info(f"Error releasing ports: {e}")
 
     except Exception as e:
-        print(f"Error when cleaning docker resources: {e}")
+        logger.info(f"Error when cleaning docker resources: {e}")
          
 
 @socketio.on('start_terminal')
@@ -3497,7 +3620,7 @@ def handle_linux_start_terminal_console(working_dir, linux_username, start_comma
                             start_command
                         ])
             except Exception as e:
-                    print(f"Child process error: {e}", flush=True)
+                    logger.info(f"Child process error: {e}", flush=True)
                     os._exit(1)
         else:
                 # Parent process - read from pty and send to client
@@ -3528,14 +3651,14 @@ def handle_linux_start_terminal_console(working_dir, linux_username, start_comma
                 
     except Exception as e:
         error_msg = f"Failed to start terminal: {e}"
-        print(error_msg)
+        logger.info(error_msg)
         traceback.print_exc()
         socketio.emit('terminal_error', {'error': error_msg})
         return
 
 def read_pty_output(session_id, fd):
     """Read output from pty and send to client via WebSocket"""
-    print(f"Started pty reader thread for session {session_id}")
+    logger.info(f"Started pty reader thread for session {session_id}")
     
     try:
         while session_id in active_terminals:
@@ -3547,30 +3670,30 @@ def read_pty_output(session_id, fd):
                     try:
                         # Read data from pty
                         data = os.read(fd, 4096)
-                        print("================ DATA OUTPUT TO EMIT ", data)
+                        logger.info("================ DATA OUTPUT TO EMIT ", data)
                         if data:
                             # Decode and send to client
                             output = data.decode('utf-8', errors='replace')
                             socketio.emit('terminal_output', {'data': output}, room=session_id)
-                            print("===== EMIT OUTPUT TO CHANNEL ", session_id)
+                            logger.info("===== EMIT OUTPUT TO CHANNEL ", session_id)
                         else:
                             # EOF - process died
-                            print(f"PTY EOF for session {session_id}")
+                            logger.info(f"PTY EOF for session {session_id}")
                             break
                     except OSError as e:
                         if e.errno == 5:  # EIO - process terminated
-                            print(f"PTY process terminated for session {session_id}")
+                            logger.info(f"PTY process terminated for session {session_id}")
                             break
                         raise
                         
             except Exception as e:
-                print(f"Error reading from pty: {e}")
+                logger.info(f"Error reading from pty: {e}")
                 break
                 
     except Exception as e:
-        print(f"PTY reader thread error: {e}")
+        logger.info(f"PTY reader thread error: {e}")
     finally:
-        print(f"PTY reader thread stopped for session {session_id}")
+        logger.info(f"PTY reader thread stopped for session {session_id}")
         socketio.emit('terminal_error', {'error': 'Terminal session ended'}, room=session_id)
 
 def get_prompt(current_dir):
@@ -3582,7 +3705,7 @@ command_buffers = {}
 @socketio.on('terminal_input')
 def handle_terminal_input(data):
     session_id = request.sid
-    print('================= INPUT DATA FROM CHANNEL ', session_id)
+    logger.info('================= INPUT DATA FROM CHANNEL ', session_id)
     input_data = data.get('data', '')
     
     if session_id not in active_terminals:
@@ -3591,7 +3714,7 @@ def handle_terminal_input(data):
     
     terminal_info = active_terminals[session_id]
     if not terminal_info:
-        print("CHANNEL NOT ACTIVE")
+        logger.info("CHANNEL NOT ACTIVE")
         return
     # Check if Windows or Linux mode
     if terminal_info.get('is_windows', False):
@@ -3603,7 +3726,7 @@ def handle_terminal_input(data):
         if pty_fd:
             try:
                 # Write input directly to pty
-                print("========== EXE COMMAND ", input_data.encode('utf-8'))
+                logger.info("========== EXE COMMAND ", input_data.encode('utf-8'))
 
                 os.write(pty_fd, input_data.encode('utf-8'))
                 
@@ -3622,17 +3745,17 @@ def handle_terminal_input(data):
                         # Kiểm tra Enter (\r hoặc \n)
                         if '\n' in input_data or '\r' in input_data:
                             full_command = command_buffers[session_id].replace('\r', '').replace('\n', '')
-                            print(f"User command: {full_command}")  # <-- ghi log hoặc lưu DB
+                            logger.info(f"User command: {full_command}")  # <-- ghi log hoặc lưu DB
                             command_buffers[session_id] = ''  # reset buffer    
                             command_log = CommandLog(terminal_session_id=terminal_session.id,command=full_command,is_allowed=True,blocked_reason=None)
                             db.session.add(command_log)
                         db.session.commit()
                 except Exception as e:
-                    print(f"Warning: Could not update last activity: {e}")
+                    logger.info(f"Warning: Could not update last activity: {e}")
                     db.session.rollback()
                     
             except Exception as e:
-                print(f"Error writing to pty: {e}")
+                logger.info(f"Error writing to pty: {e}")
                 socketio.emit('terminal_error', {'error': f'Failed to write to terminal: {e}'})
         else:
             socketio.emit('terminal_error', {'error': 'Terminal not ready'})
@@ -3675,7 +3798,7 @@ def handle_windows_terminal_input(session_id, input_data, terminal_info):
         terminal_session.last_activity = datetime.utcnow()
         db.session.commit()
     except Exception as e:
-        print(f"Warning: Could not update last activity: {e}")
+        logger.info(f"Warning: Could not update last activity: {e}")
         db.session.rollback()
 
 @socketio.on('terminal_resize')
@@ -3704,9 +3827,9 @@ def handle_terminal_resize(data):
         winsize = struct.pack('HHHH', rows, cols, 0, 0)
         fcntl.ioctl(pty_fd, termios.TIOCSWINSZ, winsize)
         
-        print(f"Terminal resized to {cols}x{rows} for session {session_id}")
+        logger.info(f"Terminal resized to {cols}x{rows} for session {session_id}")
     except Exception as e:
-        print(f"Error resizing terminal: {e}")
+        logger.info(f"Error resizing terminal: {e}")
 
 def execute_secure_command(socket_session_id, command, terminal_session, lab_session):
     """Execute command with security validation"""
@@ -3835,7 +3958,7 @@ def execute_secure_command(socket_session_id, command, terminal_session, lab_ses
         terminal_session.command_count += 1
         db.session.commit()
     except Exception as e:
-        print(f"Warning: Could not save command log: {e}")
+        logger.info(f"Warning: Could not save command log: {e}")
         db.session.rollback()
 
 def handle_cd_command(command, current_dir, accessible_resources):
@@ -3943,13 +4066,13 @@ def create_sample_data():
             db.session.add(lab)
         
         db.session.commit()
-        print("✅ Sample data created successfully!")
+        logger.info("✅ Sample data created successfully!")
         
         # Create sample template directories
         create_sample_templates()
         
     except Exception as e:
-        print(f"❌ Error creating sample data: {e}")
+        logger.info(f"❌ Error creating sample data: {e}")
         db.session.rollback()
 
 def create_sample_templates():
@@ -3959,7 +4082,7 @@ def create_sample_templates():
             'name': 'sql-injection-template',
             'files': {
                 'README.md': '# SQL Injection Lab\n\nLearn about SQL injection vulnerabilities.\n',
-                'src/app.py': '# Flask app with SQL injection vulnerability\nprint("Hello World")\n',
+                'src/app.py': '# Flask app with SQL injection vulnerability\nlogger.info("Hello World")\n',
                 'database/init.sql': '-- Database initialization\nCREATE TABLE users (id INT, username TEXT, password TEXT);\n'
             }
         },
@@ -4010,7 +4133,7 @@ if __name__ == '__main__':
                     db.session.commit()
         except Exception as e:
             # Don't block startup; user can run setup_mysql.py migrate or ALTER manually.
-            print(f"Warning: could not ensure labs.flow_type column: {e}")
+            logger.info(f"Warning: could not ensure labs.flow_type column: {e}")
             db.session.rollback()
 
         db.create_all()
@@ -4018,11 +4141,11 @@ if __name__ == '__main__':
         # Create sample data for testing
         create_sample_data()
     
-    print("🚀 Starting Lab Management System...")
-    print("📡 Server will be available at: http://localhost:5000")
-    print("🔐 Google OAuth configured")
-    print("🧪 Lab environment ready")
-    print("🔒 Secure terminal with command validation")
+    logger.info("🚀 Starting Lab Management System...")
+    logger.info("📡 Server will be available at: http://localhost:5000")
+    logger.info("🔐 Google OAuth configured")
+    logger.info("🧪 Lab environment ready")
+    logger.info("🔒 Secure terminal with command validation")
     
     socketio.run(app, debug=True, host='0.0.0.0', port=5000)
     
