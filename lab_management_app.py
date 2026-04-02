@@ -56,7 +56,46 @@ else:
 # Install PyMySQL as MySQLdb (for compatibility)
 pymysql.install_as_MySQLdb()
 
+# ============================ Logging and Monitoring ============================
+LOG_DIR = os.getenv('LOG_DIR', 'logs')
+Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
+log_file = os.path.join(LOG_DIR, 'lab_management.log')
+
+logger = logging.getLogger('lab_management_app')
+logger.setLevel(logging.INFO)
+
+file_handler = RotatingFileHandler(
+    log_file,
+    maxBytes=int(os.getenv('LOG_MAX_BYTES', 10 * 1024 * 1024)),
+    backupCount=int(os.getenv('LOG_BACKUP_COUNT', 5)),
+    encoding='utf-8'
+)
+formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s [%(funcName)s:%(lineno)d] %(message)s')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+# Kế thừa logger cho app
+def attach_app_logger(flask_app):
+    flask_app.logger.handlers = logger.handlers
+    flask_app.logger.setLevel(logger.level)
+    return flask_app
+
+# Prometheus metrics
+if Counter and Histogram:
+    REQUEST_COUNT = Counter('lab_app_http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'http_status'])
+    REQUEST_LATENCY = Histogram('lab_app_http_request_latency_seconds', 'HTTP request latency', ['method', 'endpoint'])
+    FUNCTION_ERRORS = Counter('lab_app_function_errors_total', 'Total function errors', ['function'])
+    LAB_STARTS = Counter('lab_app_lab_starts_total', 'Total lab starts')
+    LAB_SUBMISSIONS = Counter('lab_app_lab_submissions_total', 'Total lab submissions')
+else:
+    REQUEST_COUNT = REQUEST_LATENCY = FUNCTION_ERRORS = LAB_STARTS = LAB_SUBMISSIONS = None
+
 app = Flask(__name__)
+app = attach_app_logger(app)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 logger.info("DATABASE URL: ", os.getenv('DATABASE_URL'))
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'mysql+pymysql://root:@localhost:3306/lab_management')
@@ -105,62 +144,6 @@ def metrics_endpoint():
 @app.route('/healthz')
 def healthz():
     return jsonify({'status': 'ok'}), 200
-
-# ============================ Logging and Monitoring ============================
-LOG_DIR = os.getenv('LOG_DIR', 'logs')
-Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
-log_file = os.path.join(LOG_DIR, 'lab_management.log')
-
-logger = logging.getLogger('lab_management_app')
-logger.setLevel(logging.INFO)
-
-file_handler = RotatingFileHandler(
-    log_file,
-    maxBytes=int(os.getenv('LOG_MAX_BYTES', 10 * 1024 * 1024)),
-    backupCount=int(os.getenv('LOG_BACKUP_COUNT', 5)),
-    encoding='utf-8'
-)
-formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s [%(funcName)s:%(lineno)d] %(message)s')
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
-
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
-
-# Kế thừa logger cho app
-def attach_app_logger(flask_app):
-    flask_app.logger.handlers = logger.handlers
-    flask_app.logger.setLevel(logger.level)
-    return flask_app
-
-app = attach_app_logger(app)
-
-# Prometheus metrics
-if Counter and Histogram:
-    REQUEST_COUNT = Counter('lab_app_http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'http_status'])
-    REQUEST_LATENCY = Histogram('lab_app_http_request_latency_seconds', 'HTTP request latency', ['method', 'endpoint'])
-    FUNCTION_ERRORS = Counter('lab_app_function_errors_total', 'Total function errors', ['function'])
-    LAB_STARTS = Counter('lab_app_lab_starts_total', 'Total lab starts')
-    LAB_SUBMISSIONS = Counter('lab_app_lab_submissions_total', 'Total lab submissions')
-else:
-    REQUEST_COUNT = REQUEST_LATENCY = FUNCTION_ERRORS = LAB_STARTS = LAB_SUBMISSIONS = None
-
-
-def _metrics_before_request():
-    request._start_time = datetime.utcnow()
-
-
-def _metrics_after_request(response):
-    if REQUEST_COUNT and REQUEST_LATENCY:
-        path = request.path
-        method = request.method
-        status = response.status_code
-        REQUEST_COUNT.labels(method=method, endpoint=path, http_status=status).inc()
-        duration = (datetime.utcnow() - getattr(request, '_start_time', datetime.utcnow())).total_seconds()
-        REQUEST_LATENCY.labels(method=method, endpoint=path).observe(duration)
-    return response
-
 
 # ================================================================================
 
