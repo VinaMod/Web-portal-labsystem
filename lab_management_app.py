@@ -27,6 +27,11 @@ import hashlib
 import logging
 from logging.handlers import RotatingFileHandler
 
+try:
+    from elasticsearch import Elasticsearch
+except ImportError:
+    Elasticsearch = None
+
 # Optional metrics, nếu chưa cài sẽ báo lỗi sớm trong môi trường dev
 try:
     from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
@@ -57,26 +62,90 @@ else:
 pymysql.install_as_MySQLdb()
 
 # ============================ Logging and Monitoring ============================
-LOG_DIR = os.getenv('LOG_DIR', 'logs')
-Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
-log_file = os.path.join(LOG_DIR, 'lab_management.log')
 
-logger = logging.getLogger('lab_management_app')
-logger.setLevel(logging.INFO)
+class ElasticsearchHandler(logging.Handler):
+    """Simple Elasticsearch logging handler."""
+    def __init__(self, hosts, index='lab_management_logs', level=logging.INFO):
+        super().__init__(level)
+        self.index = index
+        self.es = Elasticsearch(hosts=hosts)
 
-file_handler = RotatingFileHandler(
-    log_file,
-    maxBytes=int(os.getenv('LOG_MAX_BYTES', 10 * 1024 * 1024)),
-    backupCount=int(os.getenv('LOG_BACKUP_COUNT', 5)),
-    encoding='utf-8'
-)
-formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s [%(funcName)s:%(lineno)d] %(message)s')
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
+    def emit(self, record):
+        try:
+            log_entry = {
+                '@timestamp': datetime.utcnow().isoformat() + 'Z',
+                'level': record.levelname,
+                'logger': record.name,
+                'message': record.getMessage(),
+                'funcName': record.funcName,
+                'lineno': record.lineno,
+                'module': record.module,
+                'pathname': record.pathname,
+                'threadName': record.threadName,
+                'processName': record.processName,
+            }
+            if record.exc_info:
+                log_entry['exc_info'] = self.formatException(record.exc_info)
+            self.es.index(index=self.index, document=log_entry)
+        except Exception:
+            self.handleError(record)
 
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+
+def setup_logging():
+    """Initialize and configure the application logger."""
+    log_dir = os.getenv('LOG_DIR', 'logs')
+    Path(log_dir).mkdir(parents=True, exist_ok=True)
+    log_file = os.path.join(log_dir, 'lab_management.log')
+
+    app_logger = logging.getLogger('lab_management_app')
+    app_logger.setLevel(getattr(logging, os.getenv('LOG_LEVEL', 'INFO').upper(), logging.INFO))
+    app_logger.handlers = []
+
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s [%(funcName)s:%(lineno)d] %(message)s')
+
+    file_handler = RotatingFileHandler(
+        log_file,
+        maxBytes=int(os.getenv('LOG_MAX_BYTES', 10 * 1024 * 1024)),
+        backupCount=int(os.getenv('LOG_BACKUP_COUNT', 5)),
+        encoding='utf-8'
+    )
+    file_handler.setFormatter(formatter)
+    app_logger.addHandler(file_handler)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    app_logger.addHandler(console_handler)
+
+    use_es = os.getenv('ENABLE_ELASTICSEARCH_LOGGING', 'false').strip().lower() in ('true', '1', 'yes')
+    if use_es:
+        if Elasticsearch is None:
+            app_logger.warning('ENABLE_ELASTICSEARCH_LOGGING is true but elasticsearch package is not installed.')
+        else:
+            es_hosts = os.getenv('ELASTICSEARCH_HOST', 'localhost:9200').split(',')
+            es_hosts_parsed = []
+            for host in es_hosts:
+                host = host.strip()
+                if not host:
+                    continue
+                if ':' in host:
+                    h, p = host.split(':', 1)
+                    try:
+                        p = int(p)
+                    except ValueError:
+                        p = 9200
+                    es_hosts_parsed.append({'host': h, 'port': p})
+                else:
+                    es_hosts_parsed.append({'host': host, 'port': 9200})
+
+            es_index = os.getenv('ELASTICSEARCH_INDEX', 'lab_management_logs')
+            es_handler = ElasticsearchHandler(es_hosts_parsed, index=es_index)
+            es_handler.setFormatter(formatter)
+            app_logger.addHandler(es_handler)
+            app_logger.info('Elasticsearch logging enabled', extra={'es_index': es_index, 'es_hosts': es_hosts_parsed})
+
+    return app_logger
+
+logger = setup_logging()
 
 # Kế thừa logger cho app
 def attach_app_logger(flask_app):
