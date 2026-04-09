@@ -151,6 +151,11 @@
         color: #155724;
       }
 
+      .lab-status.failed {
+        background: #f8d7da;
+        color: #721c24;
+      }
+
       .lab-title {
         font-weight: 600;
         color: #333;
@@ -246,6 +251,17 @@
 
       .btn-review:hover {
         background: #5a6268;
+        transform: translateY(-1px);
+        color: white;
+      }
+
+      .btn-retry {
+        background: #dc3545;
+        color: white;
+      }
+
+      .btn-retry:hover {
+        background: #c82333;
         transform: translateY(-1px);
         color: white;
       }
@@ -574,11 +590,11 @@
           <div class="labs-grid">
             {% for lab in course_info.labs %}
             <div class="lab-card">
-              <div class="lab-status {{ lab.status }}">
+              <div class="lab-status {{ lab.status|replace('_', '-') }}">
                 {% if lab.status == 'not_started' %} Not Started {% elif
                 lab.status == 'in_progress' %} In Progress {% elif lab.status ==
                 'completed' %} Completed {% elif lab.status == 'submitted' %}
-                Submitted {% endif %}
+                Submitted {% elif lab.status == 'failed' %} Failed {% endif %}
               </div>
 
               <h5 class="lab-title">{{ lab.name }}</h5>
@@ -633,6 +649,13 @@
                   onclick="reviewLab({{ lab.id }}, {{ lab.lab_session_id }}, '{{ (lab.flow_type or 'LABTAINER')|e }}')"
                 >
                   <i class="fas fa-eye me-1"></i>Review
+                </button>
+                {% elif lab.status == 'failed' %}
+                <button
+                  class="btn btn-lab btn-retry"
+                  onclick="startLab({{ lab.id }}, '{{ (lab.flow_type or 'LABTAINER')|e }}')"
+                >
+                  <i class="fas fa-rotate-right me-1"></i>Retry
                 </button>
                 {% endif %}
               </div>
