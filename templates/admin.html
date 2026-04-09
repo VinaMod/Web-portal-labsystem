@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content="{{ csrf_token }}" />
     <title>Admin Dashboard - Lab Management</title>
     <link
       href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
@@ -1127,6 +1128,37 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
+      const csrfToken = document
+        .querySelector('meta[name="csrf-token"]')
+        ?.getAttribute("content");
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = (input, init = {}) => {
+        const options = { ...init };
+        const method = (options.method || "GET").toUpperCase();
+        const headers = new Headers(options.headers || {});
+        if (!headers.has("X-CSRF-Token") && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+          headers.set("X-CSRF-Token", csrfToken);
+        }
+        options.headers = headers;
+        if (!options.credentials) {
+          options.credentials = "same-origin";
+        }
+        return originalFetch(input, options);
+      };
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function safeRelativeUrl(url) {
+        return typeof url === "string" && url.startsWith("/") ? url : "#";
+      }
+
       // Global variables
       let courses = [];
       let labs = [];
@@ -1163,8 +1195,8 @@
             (user) => `
                 <tr>
                     <td>${user.id}</td>
-                    <td>${user.email}</td>
-                    <td>${user.full_name}</td>
+                    <td>${escapeHtml(user.email)}</td>
+                    <td>${escapeHtml(user.full_name)}</td>
                     <td>
                         <select class="form-select form-select-sm" onchange="updateUserRole(${
                           user.id
@@ -1277,9 +1309,9 @@
             (course) => `
                 <tr>
                     <td>${course.id}</td>
-                    <td><strong>${course.code}</strong></td>
-                    <td>${course.name}</td>
-                    <td>${course.semester || "-"}</td>
+                    <td><strong>${escapeHtml(course.code)}</strong></td>
+                    <td>${escapeHtml(course.name)}</td>
+                    <td>${escapeHtml(course.semester || "-")}</td>
                     <td><span class="badge bg-info">${
                       course.lab_count
                     } labs</span></td>
@@ -1317,7 +1349,7 @@
           '<option value="">Select Course</option>' +
           courses
             .map(
-              (c) => `<option value="${c.id}">${c.code} - ${c.name}</option>`
+              (c) => `<option value="${c.id}">${escapeHtml(c.code)} - ${escapeHtml(c.name)}</option>`
             )
             .join("");
       }
@@ -1428,8 +1460,8 @@
             (lab) => `
                 <tr>
                     <td>${lab.id}</td>
-                    <td><strong>${lab.name}</strong></td>
-                    <td>${lab.course_name}</td>
+                    <td><strong>${escapeHtml(lab.name)}</strong></td>
+                    <td>${escapeHtml(lab.course_name)}</td>
                     <td>
                         <span class="badge bg-${
                           lab.difficulty === "easy"
@@ -1602,16 +1634,16 @@
             const values = JSON.parse(param.parameter_values || "[]");
             parametersHtml += `
               <div class="parameter-item mb-2">
-                <strong>${param.parameter_name}</strong>
+                <strong>${escapeHtml(param.parameter_name)}</strong>
                 ${
                   param.description
-                    ? `<p class="mb-1 text-muted small">${param.description}</p>`
+                    ? `<p class="mb-1 text-muted small">${escapeHtml(param.description)}</p>`
                     : ""
                 }
                 <div>
                   ${values
                     .map(
-                      (v) => `<span class="parameter-values-badge">${v}</span>`
+                      (v) => `<span class="parameter-values-badge">${escapeHtml(v)}</span>`
                     )
                     .join("")}
                 </div>
@@ -1627,11 +1659,11 @@
           <div class="row">
             <div class="col-md-6 mb-3">
               <label class="text-muted small">Lab Name</label>
-              <p class="mb-0"><strong>${lab.name}</strong></p>
+              <p class="mb-0"><strong>${escapeHtml(lab.name)}</strong></p>
             </div>
             <div class="col-md-6 mb-3">
               <label class="text-muted small">Course</label>
-              <p class="mb-0">${lab.course_name}</p>
+              <p class="mb-0">${escapeHtml(lab.course_name)}</p>
             </div>
           </div>
           
@@ -1657,22 +1689,22 @@
           </div>
 
           <div class="mb-3">
-            <label class="text-muted small">Description</label>
-            <p class="mb-0">${
-              lab.description || '<em class="text-muted">No description</em>'
+              <label class="text-muted small">Description</label>
+              <p class="mb-0">${
+              lab.description ? escapeHtml(lab.description) : '<em class="text-muted">No description</em>'
             }</p>
           </div>
 
           <div class="mb-3">
             <label class="text-muted small">Template Folder</label>
-            <p class="mb-0"><code>${lab.template_folder}</code></p>
+            <p class="mb-0"><code>${escapeHtml(lab.template_folder)}</code></p>
           </div>
 
           <div class="mb-3">
             <label class="text-muted small"><i class="fas fa-hammer"></i> Build Command</label>
             <p class="mb-0">${
               lab.build_command
-                ? `<code>${lab.build_command}</code>`
+                ? `<code>${escapeHtml(lab.build_command)}</code>`
                 : '<em class="text-muted">Not configured</em>'
             }</p>
           </div>
@@ -1681,7 +1713,7 @@
             <label class="text-muted small"><i class="fas fa-play"></i> Run Command</label>
             <p class="mb-0">${
               lab.run_commands
-                ? `<code>${lab.run_commands}</code>`
+                ? `<code>${escapeHtml(lab.run_commands)}</code>`
                 : '<em class="text-muted">Not configured</em>'
             }</p>
           </div>
@@ -1692,7 +1724,7 @@
               resources.length > 0
                 ? resources
                     .map(
-                      (r) => `<span class="badge bg-secondary me-1">${r}</span>`
+                      (r) => `<span class="badge bg-secondary me-1">${escapeHtml(r)}</span>`
                     )
                     .join("")
                 : '<em class="text-muted">No resources</em>'
@@ -1705,7 +1737,7 @@
               <p class="mb-0">${
                 lab.pdf_instruction_url
                   ? `<span class="badge bg-success"><i class="fas fa-check-circle me-1"></i>Available</span> 
-                     <a href="${lab.pdf_instruction_url}" target="_blank" class="btn btn-sm btn-outline-primary ms-2">
+                     <a href="${safeRelativeUrl(lab.pdf_instruction_url)}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary ms-2">
                        <i class="fas fa-external-link-alt me-1"></i>View PDF
                      </a>`
                   : '<span class="badge bg-secondary"><i class="fas fa-times-circle me-1"></i>Not configured</span>'
@@ -1726,7 +1758,7 @@
               ? `
           <div class="mb-3">
             <label class="text-muted small"><i class="fas fa-code"></i> Expected Output Result</label>
-            <pre class="bg-dark text-light p-3 rounded" style="font-family: 'Consolas', monospace; font-size: 0.85rem; max-height: 200px; overflow-y: auto;">${lab.output_result}</pre>
+            <pre class="bg-dark text-light p-3 rounded" style="font-family: 'Consolas', monospace; font-size: 0.85rem; max-height: 200px; overflow-y: auto;">${escapeHtml(lab.output_result)}</pre>
           </div>
           `
               : ""
@@ -1916,7 +1948,7 @@
                     <label class="form-label small">Expected Answer</label>
                     <input type="text" class="form-control form-control-sm checkpoint-expected-answer" 
                            value="${
-                             rule.expected_answer || ""
+                             escapeHtml(rule.expected_answer || "")
                            }" placeholder="Expected answer after decode">
                   </div>
                   <div class="col-md-2 mb-2">
@@ -2192,11 +2224,11 @@
             (enrollment) => `
                 <tr>
                     <td>${enrollment.id}</td>
-                    <td>${enrollment.user_name}<br><small class="text-muted">${
-              enrollment.user_email
+                    <td>${escapeHtml(enrollment.user_name)}<br><small class="text-muted">${
+              escapeHtml(enrollment.user_email)
             }</small></td>
-                    <td>${enrollment.course_code} - ${
-              enrollment.course_name
+                    <td>${escapeHtml(enrollment.course_code)} - ${
+              escapeHtml(enrollment.course_name)
             }</td>
                     <td>
                         <span class="badge ${
@@ -2274,11 +2306,11 @@
             (session) => `
                 <tr>
                     <td>${session.id}</td>
-                    <td>${session.user_name}<br><small class="text-muted">${
-              session.user_email
+                    <td>${escapeHtml(session.user_name)}<br><small class="text-muted">${
+              escapeHtml(session.user_email)
             }</small></td>
-                    <td>${session.lab_name}</td>
-                    <td>${session.course_name}</td>
+                    <td>${escapeHtml(session.lab_name)}</td>
+                    <td>${escapeHtml(session.course_name)}</td>
                     <td>
                         <span class="badge bg-${
                           session.status === "completed"
@@ -2436,17 +2468,17 @@
               <div class="col-md-6">
                 <label class="text-muted small">Student</label>
                 <p class="mb-0"><strong>${
-                  session ? session.user_name : "N/A"
+                  session ? escapeHtml(session.user_name) : "N/A"
                 }</strong></p>
                 <small class="text-muted">${
-                  session ? session.user_email : ""
+                  session ? escapeHtml(session.user_email) : ""
                 }</small>
               </div>
               <div class="col-md-6">
                 <label class="text-muted small">Lab</label>
-                <p class="mb-0">${session ? session.lab_name : "N/A"}</p>
+                <p class="mb-0">${session ? escapeHtml(session.lab_name) : "N/A"}</p>
                 <small class="text-muted">${
-                  session ? session.course_name : ""
+                  session ? escapeHtml(session.course_name) : ""
                 }</small>
               </div>
             </div>
@@ -2747,10 +2779,12 @@
         const alertDiv = document.createElement("div");
         alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
         alertDiv.style.zIndex = "9999";
-        alertDiv.innerHTML = `
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
+        alertDiv.append(document.createTextNode(String(message ?? "")));
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn-close";
+        button.setAttribute("data-bs-dismiss", "alert");
+        alertDiv.appendChild(button);
         document.body.appendChild(alertDiv);
 
         setTimeout(() => {

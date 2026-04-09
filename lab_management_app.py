@@ -25,7 +25,11 @@ import secrets
 import threading
 import hashlib
 import logging
+import ipaddress
+import socket
+import shlex
 from logging.handlers import RotatingFileHandler
+from urllib.parse import urlparse
 
 try:
     from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
@@ -104,8 +108,12 @@ else:
 
 app = Flask(__name__)
 app = attach_app_logger(app)
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
-logger.info("DATABASE URL: ", os.getenv('DATABASE_URL'))
+configured_secret_key = os.getenv('SECRET_KEY')
+if configured_secret_key:
+    app.config['SECRET_KEY'] = configured_secret_key
+else:
+    app.config['SECRET_KEY'] = secrets.token_hex(32)
+    logger.warning('SECRET_KEY is not configured; using an ephemeral key for this process.')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'mysql+pymysql://root:@localhost:3306/lab_management')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
@@ -113,15 +121,23 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_recycle': 3600,
     'pool_pre_ping': True,
 }
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = os.getenv('SESSION_COOKIE_SAMESITE', 'Lax')
+app.config['SESSION_COOKIE_SECURE'] = os.getenv('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=int(os.getenv('SESSION_LIFETIME_HOURS', '8')))
 
 # Google OAuth Config
-logger.info("Google client id: ", os.getenv('GOOGLE_CLIENT_ID'))
 app.config['GOOGLE_CLIENT_ID'] = os.getenv('GOOGLE_CLIENT_ID')
 app.config['GOOGLE_CLIENT_SECRET'] = os.getenv('GOOGLE_CLIENT_SECRET')
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio_allowed_origins = os.getenv('SOCKETIO_ALLOWED_ORIGINS')
+if socketio_allowed_origins:
+    socketio_cors_origins = [origin.strip() for origin in socketio_allowed_origins.split(',') if origin.strip()]
+else:
+    socketio_cors_origins = []
+socketio = SocketIO(app, cors_allowed_origins=socketio_cors_origins)
 
 lab_start_random_cache = {}
 lab_start_random_cache_lock = threading.Lock()
@@ -141,6 +157,9 @@ def after_request_metrics(response):
         duration = (datetime.utcnow() - request._start_time).total_seconds()
         REQUEST_COUNT.labels(method=method, endpoint=endpoint, http_status=status_code).inc()
         REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(duration)
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'DENY')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
     return response
 
 @app.route('/metrics')
@@ -564,6 +583,134 @@ def is_edu_email(email):
     pattern = os.getenv('ALLOWED_EMAIL_REGEX', r'^.+@.+\.edu(\..+)?$')
     return bool(re.match(pattern, email, re.IGNORECASE))
 
+
+SAFE_IDENTIFIER_RE = re.compile(r'^[a-z0-9_][a-z0-9_.-]{0,127}$', re.IGNORECASE)
+SAFE_CONTAINER_RE = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$')
+BLOCKED_FETCH_HOSTS = {
+    'localhost',
+    '127.0.0.1',
+    '::1',
+    '0.0.0.0',
+    '169.254.169.254',
+    'metadata.google.internal',
+}
+
+
+def _env_flag(name, default=False):
+    return os.getenv(name, str(default)).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def get_or_create_csrf_token():
+    token = session.get('_csrf_token')
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session['_csrf_token'] = token
+    return token
+
+
+def ensure_safe_identifier(value, field_name='value'):
+    value = (value or '').strip()
+    if not SAFE_IDENTIFIER_RE.fullmatch(value):
+        raise ValueError(f'Invalid {field_name}')
+    return value
+
+
+def ensure_safe_container_name(value, field_name='container name'):
+    value = (value or '').strip()
+    if not SAFE_CONTAINER_RE.fullmatch(value):
+        raise ValueError(f'Invalid {field_name}')
+    return value
+
+
+def ensure_safe_working_directory(path_value):
+    if not path_value:
+        raise ValueError('Working directory is required')
+
+    resolved_path = Path(path_value).resolve(strict=False)
+    allowed_roots = [
+        Path(LAB_TEMPLATES_PATH).resolve(strict=False),
+        Path(STUDENT_LABS_PATH).resolve(strict=False),
+    ]
+    if platform.system() != 'Windows':
+        allowed_roots.append(Path('/home').resolve(strict=False))
+
+    if not any(resolved_path == root or root in resolved_path.parents for root in allowed_roots):
+        raise ValueError('Working directory is outside allowed roots')
+    return str(resolved_path)
+
+
+def is_safe_remote_url(url):
+    try:
+        parsed = urlparse((url or '').strip())
+    except ValueError:
+        return False, 'Malformed URL'
+
+    if parsed.scheme not in {'http', 'https'}:
+        return False, 'Only http/https URLs are allowed'
+    if not parsed.hostname:
+        return False, 'URL hostname is required'
+
+    hostname = parsed.hostname.strip().lower()
+    if hostname in BLOCKED_FETCH_HOSTS:
+        return False, 'Access to local or metadata hosts is not allowed'
+
+    try:
+        ip_obj = ipaddress.ip_address(hostname)
+        resolved_ips = [ip_obj]
+    except ValueError:
+        try:
+            resolved_ips = []
+            for family, _, _, _, sockaddr in socket.getaddrinfo(hostname, parsed.port or None, type=socket.SOCK_STREAM):
+                candidate_ip = sockaddr[0]
+                resolved_ips.append(ipaddress.ip_address(candidate_ip))
+        except socket.gaierror:
+            return False, 'Unable to resolve target host'
+
+    for ip_obj in resolved_ips:
+        if (
+            ip_obj.is_private
+            or ip_obj.is_loopback
+            or ip_obj.is_link_local
+            or ip_obj.is_multicast
+            or ip_obj.is_reserved
+            or ip_obj.is_unspecified
+        ):
+            return False, 'Access to internal network addresses is not allowed'
+
+    return True, None
+
+
+@app.context_processor
+def inject_template_security_context():
+    return {
+        'csrf_token': get_or_create_csrf_token()
+    }
+
+
+def _is_csrf_exempt_request():
+    if request.method in {'GET', 'HEAD', 'OPTIONS', 'TRACE'}:
+        return True
+    if request.endpoint in {'metrics_endpoint'}:
+        return True
+    return False
+
+
+@app.before_request
+def enforce_csrf_protection():
+    if _is_csrf_exempt_request():
+        return None
+
+    session_token = session.get('_csrf_token')
+    if not session_token:
+        return jsonify({'error': 'Missing CSRF session token'}), 403
+
+    request_token = request.headers.get('X-CSRF-Token') or request.form.get('_csrf_token')
+    if not request_token or not secrets.compare_digest(session_token, request_token):
+        if request.path.startswith('/api/') or request.is_json:
+            return jsonify({'error': 'CSRF validation failed'}), 403
+        flash('CSRF validation failed.', 'error')
+        return redirect(url_for('index'))
+
 # Async HTTP helpers using aiohttp
 async def fetch_url_async(url, method='GET', headers=None, data=None, timeout=30):
     """
@@ -579,6 +726,14 @@ async def fetch_url_async(url, method='GET', headers=None, data=None, timeout=30
     Returns:
         dict with status, headers, and content
     """
+    is_allowed, reason = is_safe_remote_url(url)
+    if not is_allowed:
+        return {
+            'status': 400,
+            'error': reason,
+            'success': False
+        }
+
     async with aiohttp.ClientSession() as session:
         try:
             timeout_obj = aiohttp.ClientTimeout(total=timeout)
@@ -647,6 +802,13 @@ async def check_lab_resource_availability(resource_urls):
     results = {}
     async with aiohttp.ClientSession() as session:
         for url in resource_urls:
+            is_allowed, reason = is_safe_remote_url(url)
+            if not is_allowed:
+                results[url] = {
+                    'available': False,
+                    'error': reason
+                }
+                continue
             try:
                 timeout = aiohttp.ClientTimeout(total=5)
                 async with session.get(url, timeout=timeout) as response:
@@ -785,6 +947,8 @@ def auth_callback():
         db.session.commit()
         
         # Store user in session
+        session.permanent = True
+        session['_csrf_token'] = secrets.token_urlsafe(32)
         session['user'] = {
             'id': user.id,
             'email': user.email,
@@ -801,6 +965,7 @@ def auth_callback():
 @app.route('/logout')
 def logout():
     session.pop('user', None)
+    session.pop('_csrf_token', None)
     flash('You have been logged out successfully.', 'success')
     return redirect(url_for('index'))
 
@@ -995,10 +1160,13 @@ def enroll_course():
 @login_required
 def check_resources():
     """Check availability of external resources using aiohttp"""
-    resource_urls = request.json.get('urls', [])
+    payload = request.get_json(silent=True) or {}
+    resource_urls = payload.get('urls', [])
     
-    if not resource_urls:
+    if not isinstance(resource_urls, list) or not resource_urls:
         return jsonify({'error': 'No URLs provided'}), 400
+    if len(resource_urls) > 10:
+        return jsonify({'error': 'Maximum 10 URLs allowed'}), 400
     
     # Run async function in sync context
     results = run_async(check_lab_resource_availability(resource_urls))
@@ -1012,14 +1180,19 @@ def check_resources():
 @login_required
 def fetch_url():
     """Fetch a URL using aiohttp (for lab exercises)"""
-    data = request.json
+    data = request.get_json(silent=True) or {}
     url = data.get('url')
-    method = data.get('method', 'GET')
-    headers = data.get('headers')
+    method = str(data.get('method', 'GET')).upper()
+    headers = data.get('headers') if isinstance(data.get('headers'), dict) else None
     payload = data.get('data')
     
     if not url:
         return jsonify({'error': 'URL is required'}), 400
+    if method not in {'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'}:
+        return jsonify({'error': 'HTTP method is not allowed'}), 400
+    is_allowed, reason = is_safe_remote_url(url)
+    if not is_allowed:
+        return jsonify({'error': reason}), 400
     
     # Run async fetch
     result = run_async(fetch_url_async(url, method, headers, payload))
@@ -1030,13 +1203,18 @@ def fetch_url():
 @login_required
 def fetch_multiple():
     """Fetch multiple URLs concurrently using aiohttp"""
-    urls = request.json.get('urls', [])
+    payload = request.get_json(silent=True) or {}
+    urls = payload.get('urls', [])
     
-    if not urls:
+    if not isinstance(urls, list) or not urls:
         return jsonify({'error': 'No URLs provided'}), 400
     
     if len(urls) > 10:
         return jsonify({'error': 'Maximum 10 URLs allowed'}), 400
+    for url in urls:
+        is_allowed, reason = is_safe_remote_url(url)
+        if not is_allowed:
+            return jsonify({'error': f'Unsafe URL blocked: {reason}', 'url': url}), 400
     
     # Run async fetch for multiple URLs
     results = run_async(fetch_multiple_urls_async(urls))
@@ -1050,9 +1228,21 @@ def fetch_multiple():
 @login_required
 def check_lab_template(lab_id):
     """Check if lab template exists"""
+    user_id = session['user']['id']
+    
     lab = db.session.get(Lab, lab_id)
     if not lab:
         return jsonify({'error': 'Lab not found', 'exists': False}), 404
+    
+    # Check if user is enrolled in the course that contains this lab
+    enrollment = Enrollment.query.filter_by(
+        user_id=user_id, 
+        course_id=lab.course_id,
+        status='active'
+    ).first()
+    
+    if not enrollment:
+        return jsonify({'error': 'Access denied. You are not enrolled in this course.'}), 403
     
     template_path = os.path.join(LAB_TEMPLATES_PATH, lab.template_folder)
     exists = os.path.exists(template_path)
@@ -1072,6 +1262,55 @@ def check_lab_template(lab_id):
         'available_templates': available_templates,
         'LAB_TEMPLATES_PATH': LAB_TEMPLATES_PATH
     })
+
+@app.route('/api/lab_session/<int:session_id>', methods=['PUT'])
+@login_required
+def update_user_lab_session(session_id):
+    """Update user's own lab session"""
+    user_id = session['user']['id']
+    lab_session = LabSession.query.get_or_404(session_id)
+    
+    # Ensure the session belongs to the current user
+    if lab_session.user_id != user_id:
+        return jsonify({'error': 'Access denied. You can only update your own lab sessions.'}), 403
+    
+    data = request.json
+    
+    # Allow users to update certain fields only
+    if 'submission_notes' in data:
+        lab_session.submission_notes = data['submission_notes']
+    # Users cannot update status or score directly
+    
+    try:
+        db.session.commit()
+        return jsonify({'message': 'Lab session updated successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/enrollment/<int:enrollment_id>', methods=['PUT'])
+@login_required
+def update_user_enrollment(enrollment_id):
+    """Update user's own enrollment (e.g., withdraw)"""
+    user_id = session['user']['id']
+    enrollment = Enrollment.query.get_or_404(enrollment_id)
+    
+    # Ensure the enrollment belongs to the current user
+    if enrollment.user_id != user_id:
+        return jsonify({'error': 'Access denied. You can only update your own enrollments.'}), 403
+    
+    data = request.json
+    
+    # Allow users to update status (e.g., withdraw)
+    if 'status' in data and data['status'] in ['active', 'withdrawn']:
+        enrollment.status = data['status']
+    
+    try:
+        db.session.commit()
+        return jsonify({'message': 'Enrollment updated successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 # Admin Routes
 @app.route('/admin')
@@ -1124,6 +1363,15 @@ def update_user(user_id):
     """Update user"""
     user = User.query.get_or_404(user_id)
     data = request.json
+    
+    current_user_id = session['user']['id']
+    
+    # Prevent admin from deactivating or changing role of themselves
+    if user_id == current_user_id:
+        if 'is_active' in data and data['is_active'] == False:
+            return jsonify({'error': 'Cannot deactivate your own account'}), 400
+        if 'role' in data and data['role'] != user.role:
+            return jsonify({'error': 'Cannot change your own role'}), 400
     
     if 'role' in data:
         user.role = data['role']
@@ -1298,6 +1546,14 @@ def upload_lab_pdf():
         
         if not allowed_file(file.filename):
             return jsonify({'error': 'Only PDF files are allowed'}), 400
+        if lab_id and not str(lab_id).isdigit():
+            return jsonify({'error': 'Invalid lab_id'}), 400
+
+        file.stream.seek(0)
+        header = file.stream.read(5)
+        file.stream.seek(0)
+        if header != b'%PDF-':
+            return jsonify({'error': 'Uploaded file is not a valid PDF'}), 400
         
         # Create secure filename with lab_id prefix
         original_filename = secure_filename_custom(file.filename)
@@ -1775,6 +2031,7 @@ def create_linux_user(username, home_dir=None):
         tuple: (success: bool, message: str)
     """
     try:
+        username = ensure_safe_identifier(username, 'linux username')
         # Check if user already exists
         try:
             subprocess.run(['id', username], check=True, capture_output=True)
@@ -1787,6 +2044,7 @@ def create_linux_user(username, home_dir=None):
         # Set home directory
         if not home_dir:
             home_dir = f"/home/{username}"
+        home_dir = ensure_safe_working_directory(home_dir)
         
         # Create user with home directory
         create_cmd = [
@@ -1839,6 +2097,7 @@ def delete_linux_user(username, remove_home=True):
         tuple: (success: bool, message: str)
     """
     try:
+        username = ensure_safe_identifier(username, 'linux username')
         # Check if user exists
         try:
             subprocess.run(['id', username], check=True, capture_output=True)
@@ -2113,7 +2372,8 @@ def start_lab(lab_id):
             'redirect_url': f'/lab/{lab.id}/{lab_session.id}/terminal?flow_type={flow_type}',
             'web_url': web_url,
             'web_proxy_url': f'/{web_prefix}/{lab_id}/web/{port}/',
-            'lab_random_string': lab_random_string
+            'lab_random_string': lab_random_string,
+            'success_start_lab_output': lab_session.success_start_lab_output
         })
     except Exception as e:
         db.session.rollback()
@@ -2273,7 +2533,8 @@ def _run_lab_commands(lab_id, lab_session_id):
             'redirect_url': f'/lab/{lab_id}/{lab_session.id}/terminal?flow_type={flow_type}',
             'web_url': web_url,
             'web_proxy_url': f'/{web_prefix}/{lab_id}/web/{port}/',
-            'lab_random_string': lab_random_string
+            'lab_random_string': lab_random_string,
+            'success_start_lab_output': lab_session.success_start_lab_output
         })
     except Exception as e:
         logger.exception('Error running lab commands for lab_id=%s lab_session_id=%s user_id=%s: %s', lab_id, lab_session_id, user_id, e)
@@ -2662,16 +2923,14 @@ def wait_for_custom_lab_ready(user_linux_name, timeout=600, interval=10):
     """Wait until all Docker services for this student report Running."""
     import time
 
-    student_id = user_linux_name.replace("student_", "")
+    safe_user_linux_name = ensure_safe_identifier(user_linux_name, 'linux username')
+    student_id = safe_user_linux_name.replace("student_", "")
     deadline = time.time() + timeout
     last_status = "No matching Docker service state found yet"
 
     while time.time() < deadline:
-        service_list_cmd = f'docker service ls --format "{{{{.Name}}}}" | grep {student_id}'
-        logger.debug('[wait_for_custom_lab_ready] Checking services with command: %s', service_list_cmd)
         service_result = subprocess.run(
-            service_list_cmd,
-            shell=True,
+            ['docker', 'service', 'ls', '--format', '{{.Name}}'],
             capture_output=True,
             text=True,
             timeout=30
@@ -2680,15 +2939,13 @@ def wait_for_custom_lab_ready(user_linux_name, timeout=600, interval=10):
         if service_result.stderr.strip():
             logger.warning('[wait_for_custom_lab_ready] service ls stderr: %s', service_result.stderr.strip())
 
-        services = [line.strip() for line in service_result.stdout.splitlines() if line.strip()]
+        services = [line.strip() for line in service_result.stdout.splitlines() if line.strip() and student_id in line]
         if services:
             latest_states = {}
             for service_name in services:
-                state_cmd = f'docker service ps {service_name} --format "{{{{.CurrentState}}}}"'
-                logger.debug('[wait_for_custom_lab_ready] Checking state with command: %s', state_cmd)
+                safe_service_name = ensure_safe_container_name(service_name, 'service name')
                 state_result = subprocess.run(
-                    state_cmd,
-                    shell=True,
+                    ['docker', 'service', 'ps', safe_service_name, '--format', '{{.CurrentState}}'],
                     capture_output=True,
                     text=True,
                     timeout=30
@@ -2715,12 +2972,15 @@ def wait_for_custom_lab_ready(user_linux_name, timeout=600, interval=10):
 def execute_run_command(user_linux_name, run_command, working_directory, clean_docker_only, flow_type=None, lab_id=None, web_port=None, client_port=None, db_port=None):
     """Execute run command when lab starts"""
     try:
+        safe_user_linux_name = ensure_safe_identifier(user_linux_name, 'linux username')
+        safe_working_directory = ensure_safe_working_directory(working_directory)
+
         # If flow_type is CUSTOM, calculate TARGET_NODE based on lab_id
         if flow_type == FLOW_TYPE_CUSTOM and lab_id is not None:
             TARGET_NODE = 98 if lab_id % 2 == 1 else 99
             # Add TARGET_NODE parameter to the run_command
             run_command = f"TARGET_NODE={TARGET_NODE} " + run_command
-            student_id = user_linux_name.replace("student_", "")
+            student_id = safe_user_linux_name.replace("student_", "")
             cached_random_string = get_cached_lab_start_random_string(student_id) or ""
 
             # Expose the cached random string to run commands.
@@ -2737,7 +2997,8 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
         # Dùng newgrp -c "<command>" để chạy command với group mới
         if flow_type == FLOW_TYPE_LABTAINER:
             logger.info("COMPOSE DOWN DOCKER CONTAINER ....")
-            full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo docker compose down"'
+            compose_down_cmd = f'cd {shlex.quote(safe_working_directory)} && sudo docker compose down'
+            full_command = f'sg {shlex.quote(safe_user_linux_name)} -c {shlex.quote(compose_down_cmd)}'
             subprocess.run(
                 full_command,
                 shell=True,
@@ -2745,19 +3006,19 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
                 text=True,
                 timeout=500
             )
-        cleanup_docker_resources(user_linux_name, clean_docker_only)
-        last_folder = os.path.basename(working_directory)  # ví dụ: lab-1
+        cleanup_docker_resources(safe_user_linux_name, clean_docker_only)
+        last_folder = os.path.basename(safe_working_directory)  # ví dụ: lab-1
         expected_cmd = f"rebuild {last_folder}"
         
         logger.info("================== expected_cmd ", expected_cmd)
         if flow_type == FLOW_TYPE_LABTAINER:
             subprocess.run([
                     'sudo', 'chmod', '-R', '777', 
-                    working_directory
+                    safe_working_directory
                 ], check=True, capture_output=True)
         if run_command == expected_cmd:
             result = subprocess.run(
-            f"sudo chown -R student:student {working_directory}",
+            f"sudo chown -R student:student {shlex.quote(safe_working_directory)}",
             shell=True,
             capture_output=True,
             text=True,
@@ -2765,16 +3026,17 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
         )
             full_command = f"cd ~/labtainer/labtainer-student && {run_command}"
         else:
-            logger.info("CHOWN TO USER: ", user_linux_name)
+            logger.info("CHOWN TO USER: %s", safe_user_linux_name)
             if flow_type == FLOW_TYPE_LABTAINER: 
                 subprocess.run([
-                'sudo', 'chown', '-R', f'{user_linux_name}:{user_linux_name}', working_directory
+                'sudo', 'chown', '-R', f'{safe_user_linux_name}:{safe_user_linux_name}', safe_working_directory
                 ], check=True, capture_output=True)
 
-                full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo {run_command}"'
+                user_cmd = f'cd {shlex.quote(safe_working_directory)} && sudo {run_command}'
+                full_command = f'sg {shlex.quote(safe_user_linux_name)} -c {shlex.quote(user_cmd)}'
             else:
-                full_command = f'cd {working_directory} && {run_command}'
-        logger.info("============ FULL COMMAND ========== ", full_command)
+                full_command = f'cd {shlex.quote(safe_working_directory)} && {run_command}'
+        logger.info("============ FULL COMMAND ========== %s", full_command)
         result = subprocess.run(
             full_command,
             shell=True,
@@ -2791,13 +3053,13 @@ def execute_run_command(user_linux_name, run_command, working_directory, clean_d
         if flow_type == FLOW_TYPE_LABTAINER:    
             subprocess.run([
                     'sudo', 'chmod', '-R', '750', 
-                    working_directory
+                    safe_working_directory
                 ], check=True, capture_output=True)    
             subprocess.run([
-                'sudo', 'chown', '-R', 'student:student', working_directory
+                'sudo', 'chown', '-R', 'student:student', safe_working_directory
                 ], check=True, capture_output=True)
             subprocess.run(
-                f'cd /home/{user_linux_name}',
+                f'cd /home/{shlex.quote(safe_user_linux_name)}',
                 shell=True,
                 capture_output=True,
                 text=True,
@@ -2828,8 +3090,10 @@ SCRIPT_TEMPLATE = r"""#!/bin/bash
 ssh -t -i /home/hoangnth/labtainer/labs/lab-ssh-key student@${targetIp} "docker exec -it \$(docker ps -q -f name=${containerName} | head -n 1) bash"
 """
 def     create_student_docker(username, studentId, containerName, target_node=None):
+    username = ensure_safe_identifier(username, 'username')
+    studentId = ensure_safe_identifier(studentId, 'student id')
+    containerName = ensure_safe_container_name(containerName.replace(STUDENT_ID_LAB_PARAMETER, studentId))
     # 3. Tạo file script riêng
-    containerName = containerName.replace(STUDENT_ID_LAB_PARAMETER, studentId)
     script_path = f"/usr/local/bin/docker_client_shell_{containerName}"
     if os.path.exists(script_path):
         run(f"sudo rm -f {script_path}")
@@ -2872,14 +3136,17 @@ def     create_student_docker(username, studentId, containerName, target_node=No
 
 def run(cmd):
     logger.info(f"--> {cmd}")
-    result = subprocess.run(cmd, shell=True)
+    result = subprocess.run(cmd, shell=True, check=False)
     if result.returncode != 0:
-        logger.info("ERROR running:", cmd)
+        logger.error("ERROR running: %s", cmd)
         raise ValueError("ERROR WHEN CREATE DOCKER EXEC")
 def execute_build_command(user_linux_name, build_command, working_directory):
     """Execute build command in lab directory"""
     try:
-        full_command = f'sg {user_linux_name} -c "cd {working_directory} && sudo {build_command}"'
+        safe_user_linux_name = ensure_safe_identifier(user_linux_name, 'linux username')
+        safe_working_directory = ensure_safe_working_directory(working_directory)
+        build_cmd = f'cd {shlex.quote(safe_working_directory)} && sudo {build_command}'
+        full_command = f'sg {shlex.quote(safe_user_linux_name)} -c {shlex.quote(build_cmd)}'
         result = subprocess.run(
             full_command,
             shell=True,
@@ -3503,42 +3770,67 @@ import subprocess
 
 def cleanup_docker_resources(student_name, clean_docker_only):
     try:
-        # Escape student_name để tránh lỗi shell injection
-        student_name = student_name.replace("'", "")
-        student_name = student_name.replace("student_", "")
+        student_name = ensure_safe_identifier(student_name, 'student name')
+        student_key = student_name.replace("student_", "")
 
         # Remove containers
         try:
-            cmd_containers = f"docker ps -a --format '{{{{.Names}}}}' | grep '{student_name}' || true"
-            containers = subprocess.getoutput(cmd_containers)
+            containers_result = subprocess.run(
+                ['docker', 'ps', '-a', '--format', '{{.Names}}'],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            containers = [
+                line.strip() for line in containers_result.stdout.splitlines()
+                if line.strip() and student_key in line
+            ]
 
-            if containers.strip():
-                for c in containers.splitlines():
+            if containers:
+                for c in containers:
+                    safe_container = ensure_safe_container_name(c)
                     logger.info(f"Removing container: {c}")
-                    subprocess.call(f"docker rm -f {c}", shell=True)
+                    subprocess.run(['docker', 'rm', '-f', safe_container], capture_output=True, timeout=30)
             else:
-                logger.info(f"No containers found for {student_name}")
+                logger.info(f"No containers found for {student_key}")
         except Exception as e:
             logger.info(f"Error removing containers: {e}")
 
         # Remove networks
         try:
-            cmd_networks = f"docker network ls --format '{{{{.Name}}}}' | grep '{student_name}' || true"
-            networks = subprocess.getoutput(cmd_networks)
+            networks_result = subprocess.run(
+                ['docker', 'network', 'ls', '--format', '{{.Name}}'],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            networks = [
+                line.strip() for line in networks_result.stdout.splitlines()
+                if line.strip() and student_key in line
+            ]
 
-            if networks.strip():
-                for n in networks.splitlines():
+            if networks:
+                for n in networks:
+                    safe_network = ensure_safe_container_name(n, 'network name')
                     logger.info(f"Removing network: {n}")
-                    subprocess.call(f"docker network rm {n}", shell=True)
+                    subprocess.run(['docker', 'network', 'rm', safe_network], capture_output=True, timeout=30)
             else:
-                logger.info(f"No networks found for {student_name}")
+                logger.info(f"No networks found for {student_key}")
         except Exception as e:
             logger.info(f"Error removing networks: {e}")
 
         # Remove services
         try:
-            logger.info(f"Removing services for {student_name}")
-            subprocess.run(f"docker service rm $(docker service ls --filter name={student_name} -q)", shell=True, capture_output=True)
+            logger.info(f"Removing services for {student_key}")
+            services_result = subprocess.run(
+                ['docker', 'service', 'ls', '--filter', f'name={student_key}', '--format', '{{.ID}}'],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            service_ids = [line.strip() for line in services_result.stdout.splitlines() if line.strip()]
+            if service_ids:
+                subprocess.run(['docker', 'service', 'rm', *service_ids], capture_output=True, text=True, timeout=30)
         except Exception as e:
             logger.info(f"Error removing services: {e}")
 
@@ -4194,5 +4486,10 @@ if __name__ == '__main__':
     logger.info("🧪 Lab environment ready")
     logger.info("🔒 Secure terminal with command validation")
     
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    socketio.run(
+        app,
+        debug=_env_flag('FLASK_DEBUG', False),
+        host=os.getenv('FLASK_HOST', '0.0.0.0'),
+        port=int(os.getenv('PORT', '5000'))
+    )
     
