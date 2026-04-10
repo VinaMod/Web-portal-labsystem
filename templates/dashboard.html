@@ -65,14 +65,32 @@
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
       }
 
-      .course-header {
+            .course-header {
         display: flex;
-        justify-content: between;
+        justify-content: space-between;
         align-items: center;
-        margin-bottom: 20px;
+        margin-bottom: 0;
         padding-bottom: 15px;
-        border-bottom: 2px solid #f1f3f4;
+        cursor: pointer;
+        user-select: none;
       }
+
+      .course-header .toggle-icon {
+        font-size: 1.25rem;
+        color: #667eea;
+        transition: transform 0.3s ease;
+      }
+
+      .course-header[aria-expanded="false"] .toggle-icon {
+        transform: rotate(-90deg);
+      }
+
+      .course-card .collapse-content {
+        padding-top: 20px;
+        border-top: 2px solid #f1f3f4;
+        margin-top: 0;
+      }
+
 
       .course-code {
         background: linear-gradient(135deg, #667eea, #764ba2);
@@ -566,10 +584,16 @@
         </div>
         {% endfor %} {% endif %} {% endwith %}
 
-        <!-- Courses and Labs -->
+                <!-- Courses and Labs -->
         {% if enrolled_courses %} {% for course_info in enrolled_courses %}
         <div class="course-card">
-          <div class="course-header">
+          <div
+            class="course-header"
+            data-bs-toggle="collapse"
+            data-bs-target="#course-labs-{{ course_info.course.id }}"
+            aria-expanded="true"
+            aria-controls="course-labs-{{ course_info.course.id }}"
+          >
             <div>
               <span class="course-code">{{ course_info.course.code }}</span>
               <h3 class="course-title mt-2">{{ course_info.course.name }}</h3>
@@ -584,93 +608,106 @@
                 <i class="fas fa-user-tie ms-3 me-1"></i>Instructor
               </small>
             </div>
+            <div class="toggle-icon">
+              <i class="fas fa-chevron-down"></i>
+            </div>
           </div>
 
-          {% if course_info.labs %}
-          <div class="labs-grid">
-            {% for lab in course_info.labs %}
-            <div class="lab-card">
-              <div class="lab-status {{ lab.status|replace('_', '-') }}">
-                {% if lab.status == 'not_started' %} Not Started {% elif
-                lab.status == 'in_progress' %} In Progress {% elif lab.status ==
-                'completed' %} Completed {% elif lab.status == 'submitted' %}
-                Submitted {% elif lab.status == 'failed' %} Failed {% endif %}
-              </div>
+          <div
+            class="collapse show"
+            id="course-labs-{{ course_info.course.id }}"
+          >
+            <div class="collapse-content">
+              {% if course_info.labs %}
+              <div class="labs-grid">
+                {% for lab in course_info.labs %}
+                <div class="lab-card">
+                  <div class="lab-status {{ lab.status|replace('_', '-') }}">
+                    {% if lab.status == 'not_started' %} Not Started {% elif
+                    lab.status == 'in_progress' %} In Progress {% elif
+                    lab.status == 'completed' %} Completed {% elif lab.status ==
+                    'submitted' %} Submitted {% elif lab.status == 'failed' %}
+                    Failed {% endif %}
+                  </div>
 
-              <h5 class="lab-title">{{ lab.name }}</h5>
-              <p class="lab-description">{{ lab.description }}</p>
+                  <h5 class="lab-title">{{ lab.name }}</h5>
+                  <p class="lab-description">{{ lab.description }}</p>
 
-              <div class="lab-meta">
-                <span class="lab-difficulty {{ lab.difficulty }}">
-                  <i class="fas fa-signal me-1"></i>{{ lab.difficulty|title }}
-                </span>
-                {% if lab.estimated_duration %}
-                <span class="text-muted">
-                  <i class="fas fa-clock me-1"></i>{{ lab.estimated_duration
-                  }}min
-                </span>
-                {% endif %}
-              </div>
+                  <div class="lab-meta">
+                    <span class="lab-difficulty {{ lab.difficulty }}">
+                      <i class="fas fa-signal me-1"></i>{{ lab.difficulty|title
+                      }}
+                    </span>
+                    {% if lab.estimated_duration %}
+                    <span class="text-muted">
+                      <i class="fas fa-clock me-1"></i>{{ lab.estimated_duration
+                      }}min
+                    </span>
+                    {% endif %}
+                  </div>
 
-              {% if lab.deadline %}
-              <div
-                class="lab-deadline {% if lab.deadline and current_time and lab.deadline < current_time %}overdue{% endif %} mb-3"
-              >
-                <i class="fas fa-calendar-alt me-1"></i>
-                Due: {{ lab.deadline.strftime('%b %d, %Y at %I:%M %p') }}
+                  {% if lab.deadline %}
+                  <div
+                    class="lab-deadline {% if lab.deadline and current_time and lab.deadline < current_time %}overdue{% endif %} mb-3"
+                  >
+                    <i class="fas fa-calendar-alt me-1"></i>
+                    Due: {{ lab.deadline.strftime('%b %d, %Y at %I:%M %p') }}
+                  </div>
+                  {% endif %} {% if lab.score %}
+                  <div class="mb-3">
+                    <span class="score-badge">
+                      <i class="fas fa-star me-1"></i>{{ lab.score }}/{{
+                      lab.max_score }}
+                    </span>
+                  </div>
+                  {% endif %}
+
+                  <div class="lab-actions">
+                    {% if lab.status == 'not_started' %}
+                    <button
+                      class="btn btn-lab btn-start"
+                      onclick="startLab({{ lab.id }}, '{{ (lab.flow_type or 'LABTAINER')|e }}')"
+                    >
+                      <i class="fas fa-play me-1"></i>Start Lab
+                    </button>
+                    {% elif lab.status == 'in_progress' %}
+                    <button
+                      class="btn btn-lab btn-continue"
+                      onclick="continueLab({{ lab.id }}, {{ lab.lab_session_id }}, '{{ (lab.flow_type or 'LABTAINER')|e }}')"
+                    >
+                      <i class="fas fa-play me-1"></i>Continue
+                    </button>
+                    {% elif lab.status in ['completed', 'submitted'] %}
+                    <button
+                      class="btn btn-lab btn-review"
+                      onclick="reviewLab({{ lab.id }}, {{ lab.lab_session_id }}, '{{ (lab.flow_type or 'LABTAINER')|e }}')"
+                    >
+                      <i class="fas fa-eye me-1"></i>Review
+                    </button>
+                    {% elif lab.status == 'failed' %}
+                    <button
+                      class="btn btn-lab btn-retry"
+                      onclick="startLab({{ lab.id }}, '{{ (lab.flow_type or 'LABTAINER')|e }}')"
+                    >
+                      <i class="fas fa-rotate-right me-1"></i>Retry
+                    </button>
+                    {% endif %}
+                  </div>
+                </div>
+                {% endfor %}
               </div>
-              {% endif %} {% if lab.score %}
-              <div class="mb-3">
-                <span class="score-badge">
-                  <i class="fas fa-star me-1"></i>{{ lab.score }}/{{
-                  lab.max_score }}
-                </span>
+              {% else %}
+              <div class="empty-state">
+                <i class="fas fa-flask"></i>
+                <h5>No labs available</h5>
+                <p>Labs will appear here when they are added to this course.</p>
               </div>
               {% endif %}
-
-              <div class="lab-actions">
-                {% if lab.status == 'not_started' %}
-                <button
-                  class="btn btn-lab btn-start"
-                  onclick="startLab({{ lab.id }}, '{{ (lab.flow_type or 'LABTAINER')|e }}')"
-                >
-                  <i class="fas fa-play me-1"></i>Start Lab
-                </button>
-                {% elif lab.status == 'in_progress' %}
-                <button
-                  class="btn btn-lab btn-continue"
-                  onclick="continueLab({{ lab.id }}, {{ lab.lab_session_id }}, '{{ (lab.flow_type or 'LABTAINER')|e }}')"
-                >
-                  <i class="fas fa-play me-1"></i>Continue
-                </button>
-                {% elif lab.status in ['completed', 'submitted'] %}
-                <button
-                  class="btn btn-lab btn-review"
-                  onclick="reviewLab({{ lab.id }}, {{ lab.lab_session_id }}, '{{ (lab.flow_type or 'LABTAINER')|e }}')"
-                >
-                  <i class="fas fa-eye me-1"></i>Review
-                </button>
-                {% elif lab.status == 'failed' %}
-                <button
-                  class="btn btn-lab btn-retry"
-                  onclick="startLab({{ lab.id }}, '{{ (lab.flow_type or 'LABTAINER')|e }}')"
-                >
-                  <i class="fas fa-rotate-right me-1"></i>Retry
-                </button>
-                {% endif %}
-              </div>
             </div>
-            {% endfor %}
           </div>
-          {% else %}
-          <div class="empty-state">
-            <i class="fas fa-flask"></i>
-            <h5>No labs available</h5>
-            <p>Labs will appear here when they are added to this course.</p>
-          </div>
-          {% endif %}
         </div>
         {% endfor %} {% else %}
+
         <div
           style="display: flex; flex-direction: column; align-items: center"
           class="empty-state"

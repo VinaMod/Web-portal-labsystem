@@ -295,9 +295,6 @@ def _web_prefix_for_flow(flow_type: str, lab_id: int) -> str:
     - CUSTOM    -> vul-lab-c (backend C)
     - LABTAINER -> vul-lab-a if lab_id even else vul-lab-b
     """
-    ft = _normalize_flow_type(flow_type)
-    if ft == FLOW_TYPE_CUSTOM:
-        return "vul-lab-c"
     return "vul-lab-a" if (int(lab_id) % 2 == 0) else "vul-lab-b"
 oauth = OAuth(app)
 
