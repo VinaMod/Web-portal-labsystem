@@ -253,38 +253,14 @@
         border: none;
       }
 
-            /* Admin Labs View */
-      .course-section {
-        margin-bottom: 30px;
-        background: #fff;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-        overflow: hidden;
+      .loading-spinner {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 9999;
       }
-      .course-section-header {
-        background: #f8fafc;
-        padding: 15px 20px;
-        border-bottom: 1px solid #e2e8f0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        cursor: pointer;
-      }
-      .course-section-header h5 {
-        margin: 0;
-        color: #334155;
-        font-weight: 600;
-      }
-      .course-section-header .toggle-icon {
-        transition: transform 0.3s ease;
-      }
-      .course-section-header[aria-expanded="false"] .toggle-icon {
-        transform: rotate(-90deg);
-      }
-      .course-section-body {
-        padding: 0;
-      }
-
     </style>
   </head>
   <body>
@@ -492,7 +468,7 @@
                 </div>
               </div>
 
-                            <!-- Labs Tab -->
+              <!-- Labs Tab -->
               <div class="tab-pane fade" id="labs" role="tabpanel">
                 <button
                   class="btn btn-add"
@@ -501,11 +477,25 @@
                 >
                   <i class="fas fa-plus"></i> Create New Lab
                 </button>
-                <div id="labs-container">
-                  <!-- Grouped by course in JS -->
+                <div class="table-container">
+                  <table class="table table-hover">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Course</th>
+                        <th>Difficulty</th>
+                        <th>Parameters</th>
+                        <th>Resources</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="labs-table-body">
+                      <!-- Populated by JavaScript -->
+                    </tbody>
+                  </table>
                 </div>
               </div>
-
 
               <!-- Enrollments Tab -->
               <div class="tab-pane fade" id="enrollments" role="tabpanel">
@@ -1463,121 +1453,70 @@
         }
       }
 
-            function renderLabsTable() {
-        const container = document.getElementById("labs-container");
-        if (!labs || labs.length === 0) {
-          container.innerHTML =
-            '<p class="text-center py-5 text-muted">No labs found</p>';
-          return;
-        }
-
-        // Group labs by course
-        const groupedLabs = {};
-        labs.forEach((lab) => {
-          if (!groupedLabs[lab.course_id]) {
-            groupedLabs[lab.course_id] = {
-              name: lab.course_name,
-              labs: [],
-            };
-          }
-          groupedLabs[lab.course_id].labs.push(lab);
-        });
-
-        let html = "";
-        for (const courseId in groupedLabs) {
-          const group = groupedLabs[courseId];
-          html += `
-            <div class="course-section">
-              <div class="course-section-header" 
-                   data-bs-toggle="collapse" 
-                   data-bs-target="#labs-course-${courseId}"
-                   aria-expanded="true">
-                <h5><i class="fas fa-book me-2"></i>${escapeHtml(group.name)} (${
-            group.labs.length
-          } labs)</h5>
-                <i class="fas fa-chevron-down toggle-icon"></i>
-              </div>
-              <div class="collapse show" id="labs-course-${courseId}">
-                <div class="course-section-body">
-                  <div class="table-container mt-0">
-                    <table class="table table-hover mb-0">
-                      <thead>
-                        <tr>
-                          <th>ID</th>
-                          <th>Name</th>
-                          <th>Difficulty</th>
-                          <th>Parameters</th>
-                          <th>Resources</th>
-                          <th>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        ${group.labs
-                          .map(
-                            (lab) => `
-                          <tr>
-                            <td>${lab.id}</td>
-                            <td><strong>${escapeHtml(lab.name)}</strong></td>
-                            <td>
-                              <span class="badge bg-${
-                                lab.difficulty === "easy"
-                                  ? "success"
-                                  : lab.difficulty === "medium"
-                                  ? "warning"
-                                  : "danger"
-                              }">
-                                ${lab.difficulty}
-                              </span>
-                            </td>
-                            <td>
-                              <span class="badge bg-info">
-                                ${lab.parameters ? lab.parameters.length : 0} params
-                              </span>
-                            </td>
-                            <td>
-                              ${
-                                lab.pdf_instruction_url
-                                  ? '<i class="fas fa-file-pdf text-success me-2" title="PDF available"></i>'
-                                  : ""
-                              }
-                              ${
-                                lab.output_result
-                                  ? '<i class="fas fa-terminal text-primary" title="Output configured"></i>'
-                                  : ""
-                              }
-                            </td>
-                            <td>
-                              <button class="btn btn-sm btn-info btn-action" onclick="viewLab(${
-                                lab.id
-                              })">
-                                <i class="fas fa-eye"></i>
-                              </button>
-                              <button class="btn btn-sm btn-primary btn-action" onclick="editLab(${
-                                lab.id
-                              })">
-                                <i class="fas fa-edit"></i>
-                              </button>
-                              <button class="btn btn-sm btn-danger btn-action" onclick="deleteLab(${
-                                lab.id
-                              })">
-                                <i class="fas fa-trash"></i>
-                              </button>
-                            </td>
-                          </tr>
-                        `
-                          )
-                          .join("")}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-          `;
-        }
-        container.innerHTML = html;
+      function renderLabsTable() {
+        const tbody = document.getElementById("labs-table-body");
+        tbody.innerHTML = labs
+          .map(
+            (lab) => `
+                <tr>
+                    <td>${lab.id}</td>
+                    <td><strong>${escapeHtml(lab.name)}</strong></td>
+                    <td>${escapeHtml(lab.course_name)}</td>
+                    <td>
+                        <span class="badge bg-${
+                          lab.difficulty === "easy"
+                            ? "success"
+                            : lab.difficulty === "medium"
+                            ? "warning"
+                            : "danger"
+                        }">
+                            ${lab.difficulty}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge bg-info">
+                            ${lab.parameters ? lab.parameters.length : 0} params
+                        </span>
+                    </td>
+                    <td>
+                        ${
+                          lab.pdf_instruction_url
+                            ? '<i class="fas fa-file-pdf text-success me-2" title="PDF available"></i>'
+                            : ""
+                        }
+                        ${
+                          lab.output_result
+                            ? '<i class="fas fa-terminal text-primary" title="Output configured"></i>'
+                            : ""
+                        }
+                        ${
+                          !lab.pdf_instruction_url && !lab.output_result
+                            ? '<span class="text-muted">-</span>'
+                            : ""
+                        }
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-info btn-action" onclick="viewLab(${
+                          lab.id
+                        })">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button class="btn btn-sm btn-primary btn-action" onclick="editLab(${
+                          lab.id
+                        })">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger btn-action" onclick="deleteLab(${
+                          lab.id
+                        })">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `
+          )
+          .join("");
       }
-
 
       function showCreateLabModal() {
         document.getElementById("labModalTitle").textContent = "Create New Lab";
@@ -2764,4 +2703,94 @@
 
         if (file.type !== "application/pdf") {
           showAlert("Please select a PDF file", "danger");
-   
+          event.target.value = "";
+          return;
+        }
+
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+          showAlert("File size must be less than 10MB", "danger");
+          event.target.value = "";
+          return;
+        }
+
+        selectedPDFFile = file;
+
+        // Show preview
+        document.getElementById("pdf-filename").textContent = file.name;
+        document.getElementById(
+          "pdf-filesize"
+        ).textContent = `(${formatFileSize(file.size)})`;
+        document.getElementById("pdf-preview").style.display = "block";
+        document.getElementById("clear-pdf-btn").style.display = "block";
+
+        // Set placeholder path
+        document.getElementById(
+          "lab-pdf-instruction"
+        ).value = `/static/pdfs/${file.name}`;
+      }
+
+      function clearPDFFile() {
+        selectedPDFFile = null;
+        document.getElementById("pdf-file-input").value = "";
+        document.getElementById("lab-pdf-instruction").value = "";
+        document.getElementById("pdf-preview").style.display = "none";
+        document.getElementById("clear-pdf-btn").style.display = "none";
+      }
+
+      function formatFileSize(bytes) {
+        if (bytes === 0) return "0 Bytes";
+        const k = 1024;
+        const sizes = ["Bytes", "KB", "MB"];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return (
+          Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i]
+        );
+      }
+
+      async function uploadPDFFile(labId) {
+        if (!selectedPDFFile) return null;
+
+        const formData = new FormData();
+        formData.append("pdf", selectedPDFFile);
+        formData.append("lab_id", labId);
+
+        try {
+          const response = await fetch("/api/upload-lab-pdf", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to upload PDF");
+          }
+
+          const result = await response.json();
+          return result.pdf_url;
+        } catch (error) {
+          console.error("Error uploading PDF:", error);
+          showAlert("Failed to upload PDF file", "danger");
+          return null;
+        }
+      }
+
+      // ==================== UTILITY FUNCTIONS ====================
+      function showAlert(message, type) {
+        const alertDiv = document.createElement("div");
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
+        alertDiv.style.zIndex = "9999";
+        alertDiv.append(document.createTextNode(String(message ?? "")));
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn-close";
+        button.setAttribute("data-bs-dismiss", "alert");
+        alertDiv.appendChild(button);
+        document.body.appendChild(alertDiv);
+
+        setTimeout(() => {
+          alertDiv.remove();
+        }, 3000);
+      }
+    </script>
+  </body>
+</html>
