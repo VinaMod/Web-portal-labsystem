@@ -696,8 +696,8 @@ def _is_csrf_exempt_request():
 def enforce_csrf_protection():
     # if _is_csrf_exempt_request():
     #     return None
-    if True:
-        return None
+    # if True:
+    #     return None
     session_token = session.get('_csrf_token')
     if not session_token:
         return jsonify({'error': 'Missing CSRF session token'}), 403
