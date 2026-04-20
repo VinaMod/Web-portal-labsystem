@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
+﻿from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -1783,7 +1783,9 @@ def start_lab(lab_id):
                 replaced_command = replace_lab_parameters(lab, command, user)
                 print(f"Executing run command: {replaced_command}")
                 execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, False)
-        
+                logger.info('start_lab command_ok=%s for %s user=%s', command_ok, replaced_command, user_linux_name)
+                if not command_ok:
+                    raise RuntimeError(f"Failed to execute run command: {replaced_command}")
         return jsonify({
             'message': 'Lab started successfully',
             'lab_session_id': lab_session.id,
@@ -1867,7 +1869,9 @@ def run_lab_commands(lab_session_id):
                 replaced_command = replace_lab_parameters(lab, command, user)
                 print(f"Executing run command: {replaced_command}")
                 execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, True)
-
+                logger.info('start_lab command_ok=%s for %s user=%s', command_ok, replaced_command, user_linux_name)
+                if not command_ok:
+                    raise RuntimeError(f"Failed to execute run command: {replaced_command}")
         print("======= SEND START AND READY EVENT")  
         socketio.emit('terminal_ready', {'status': 'ready'})
         labParams = LabParameter.query.filter_by(lab_id=lab_session.lab_id)
