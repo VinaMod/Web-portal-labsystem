@@ -1782,7 +1782,7 @@ def start_lab(lab_id):
                 print(f"Raw run command: {command}")
                 replaced_command = replace_lab_parameters(lab, command, user)
                 print(f"Executing run command: {replaced_command}")
-                execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, False)
+                command_ok = execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, False)
                 print(f"start_lab command_ok={command_ok} for {replaced_command} user={user_linux_name}")
                 if not command_ok:
                     raise RuntimeError(f"Failed to execute run command: {replaced_command}")
@@ -1868,7 +1868,7 @@ def run_lab_commands(lab_session_id):
                 print(f"Raw run command: {command}")
                 replaced_command = replace_lab_parameters(lab, command, user)
                 print(f"Executing run command: {replaced_command}")
-                execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, True)
+                command_ok = execute_run_command(user_linux_name, replaced_command, lab_session.student_folder, True)
                 print(f"start_lab command_ok={command_ok} for {replaced_command} user={user_linux_name}")
                 if not command_ok:
                     raise RuntimeError(f"Failed to execute run command: {replaced_command}")
