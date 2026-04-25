@@ -691,15 +691,15 @@ def inject_template_security_context():
 def _is_csrf_exempt_request():
     if request.method in {'GET', 'HEAD', 'OPTIONS', 'TRACE'}:
         return True
-    if request.endpoint in {'metrics_endpoint'}:
+    if request.endpoint in {'metrics_endpoint', 'login', 'static'}:
         return True
     return False
 
 
 @app.before_request
 def enforce_csrf_protection():
-    # if _is_csrf_exempt_request():
-    #     return None
+    if _is_csrf_exempt_request():
+        return None
     # if True:
     #     return None
     session_token = session.get('_csrf_token')
