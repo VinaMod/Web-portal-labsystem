@@ -106,8 +106,12 @@ if Counter and Histogram:
 else:
     REQUEST_COUNT = REQUEST_LATENCY = FUNCTION_ERRORS = LAB_STARTS = LAB_SUBMISSIONS = None
 
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 app = Flask(__name__)
 app = attach_app_logger(app)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
 configured_secret_key = os.getenv('SECRET_KEY')
 if configured_secret_key:
     app.config['SECRET_KEY'] = configured_secret_key
