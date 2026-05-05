@@ -1,5 +1,6 @@
 ﻿from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 from flask_socketio import SocketIO, emit, join_room, leave_room
+import eventlet
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from authlib.integrations.flask_client import OAuth
@@ -137,11 +138,13 @@ app.config['GOOGLE_CLIENT_SECRET'] = os.getenv('GOOGLE_CLIENT_SECRET')
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 socketio_allowed_origins = os.getenv('SOCKETIO_ALLOWED_ORIGINS')
+eventlet.monkey_patch()
+
 if socketio_allowed_origins:
     socketio_cors_origins = [origin.strip() for origin in socketio_allowed_origins.split(',') if origin.strip()]
 else:
     socketio_cors_origins = []
-socketio = SocketIO(app, cors_allowed_origins=socketio_cors_origins)
+socketio = SocketIO(app, cors_allowed_origins=socketio_cors_origins, async_mode='eventlet')
 
 lab_start_random_cache = {}
 lab_start_random_cache_lock = threading.Lock()

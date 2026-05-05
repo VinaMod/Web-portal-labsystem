@@ -8,3 +8,4 @@ aiohttp==3.9.1
 pymysql==1.1.0
 cryptography==41.0.7
 python-dotenv==1.2.2
+eventlet>=0.33
