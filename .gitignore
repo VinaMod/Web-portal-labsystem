@@ -1,0 +1,31 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# virtual env
+venv/
+.envrc
+
+# Docker
+*.log
+docker-compose.override.yml
+
+logs/
+*.log
+
+build/
+dist/
+*.egg-info/
+
+# Mac
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# VSCode
+.vscode/
+
+# JetBrains
+.idea/
