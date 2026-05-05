@@ -2,14 +2,22 @@ FROM python:3.12.3-slim
 
 WORKDIR /app
 
-COPY . .
+# Copy trước requirements để tận dụng cache
+COPY requirements.txt .
 
-# cần cho envsubst (render .env)
+# Fix apt + cài envsubst
 RUN apt-get clean \
  && rm -rf /var/lib/apt/lists/* \
  && apt-get update --allow-releaseinfo-change \
- && apt-get install -y debian-archive-keyring \
- && pip install --no-cache-dir -r requirements.txt
+ && apt-get install -y --no-install-recommends \
+    gettext-base \
+ && rm -rf /var/lib/apt/lists/*
+
+# Install Python deps
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy phần còn lại
+COPY . .
 
 RUN chmod +x entrypoint.sh
 
