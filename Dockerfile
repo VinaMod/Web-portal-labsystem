@@ -22,4 +22,4 @@ COPY . .
 RUN chmod +x entrypoint.sh
 
 ENTRYPOINT ["./entrypoint.sh"]
-CMD ["python", "app.py"]
+CMD ["python", "lab_management_app.py"]
