@@ -9,6 +9,7 @@ export GOOGLE_CLIENT_SECRET=$(cat /run/secrets/google_client_secret)
 export DATABASE_PASSWORD=$(cat /run/secrets/db_password)
 
 echo "[INFO] Rendering .env file..."
+echo ${MQL_DB_HOST}
 
 envsubst < /app/.env.template > /app/.env
 
