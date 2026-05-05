@@ -5,8 +5,11 @@ WORKDIR /app
 COPY . .
 
 # cần cho envsubst (render .env)
-RUN apt-get update && apt-get install -y gettext-base \
-    && pip install --no-cache-dir -r requirements.txt
+RUN apt-get clean \
+ && rm -rf /var/lib/apt/lists/* \
+ && apt-get update --allow-releaseinfo-change \
+ && apt-get install -y debian-archive-keyring \
+ && pip install --no-cache-dir -r requirements.txt
 
 RUN chmod +x entrypoint.sh
 
