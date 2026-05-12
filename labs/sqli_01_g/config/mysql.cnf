@@ -1,0 +1,12 @@
+[mysqld]
+# Cho phép đọc/ghi file từ bất kỳ đâu (RCE Challenge)
+secure-file-priv = ""
+
+# Cho phép LOAD DATA LOCAL INFILE
+local-infile = 1
+
+# Character set
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+

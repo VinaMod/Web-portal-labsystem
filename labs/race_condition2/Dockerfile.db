@@ -1,0 +1,4 @@
+FROM mysql:5.7
+
+# Copy SQL init vào image (thay cho volume db_init)
+COPY db_init/ /docker-entrypoint-initdb.d/

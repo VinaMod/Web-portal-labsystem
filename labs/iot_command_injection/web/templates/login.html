@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NET Surveillance | Enterprise Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="login-body">
+    <div class="login-box">
+        <div class="login-header">
+            <h1>NET Surveillance</h1>
+            <p style="color: var(--text-secondary); font-size: 11px; margin-top: 5px;">IP CAMERA MANAGEMENT SYSTEM</p>
+        </div>
+        <div class="login-content">
+            {% if error %}
+            <div class="error-msg">
+                <strong>Access Denied:</strong> {{ error }}
+            </div>
+            {% endif %}
+            <form method="POST">
+                <div class="login-row">
+                    <label for="username">User Name</label>
+                    <input type="text" id="username" name="username" placeholder="Enter username" required autofocus>
+                </div>
+                <div class="login-row">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" placeholder="Enter password">
+                </div>
+                <div class="login-row">
+                    <label>Preferred Language</label>
+                    <select>
+                        <option value="en">English (US)</option>
+                        <option value="vn">Tiếng Việt</option>
+                        <option value="cn">简体中文</option>
+                    </select>
+                </div>
+                <div style="margin-top: 30px;">
+                    <button type="submit" class="btn btn-primary">AUTHENTICATE</button>
+                </div>
+            </form>
+            <div style="text-align: center; margin-top: 25px; font-size: 11px; color: var(--text-secondary);">
+                Browser Mode: <span style="color: var(--success);">Enhanced Support</span> | 
+                <a href="#" style="color: var(--accent-color); text-decoration: none;">Download ActiveX Plugin</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

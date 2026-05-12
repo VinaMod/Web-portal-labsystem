@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  ssh-server:
+    image: hoangnth101100/ssh-server:latest
+    hostname: ssh-target
+
+    environment:
+      - EMAIL=${EMAIL:-carl@techvision.com}
+      - RANDOM_KEY=${RANDOM_KEY:-undefined}
+    ports:
+      - target: 80
+        published: ${webTestPort}
+        mode: host
+
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - lab-network
+
+  client:
+    image: hoangnth101100/bruteforce-client:latest
+    hostname: client
+    stdin_open: true
+    tty: true
+    environment:
+      - clientTestPort=${clientTestPort:-6000}
+
+    ports:
+      - "${clientTestPort}:${clientTestPort}"
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - lab-network
+
+    depends_on:
+      - ssh-server
+
+    stdin_open: true
+    tty: true
+
+networks:
+  lab-network:
+    driver: overlay

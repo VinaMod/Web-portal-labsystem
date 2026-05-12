@@ -1,0 +1,35 @@
+FROM ubuntu:22.04
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    openssh-server \
+    nginx \
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir /var/run/sshd
+
+RUN useradd -m -s /bin/bash carl && \
+    echo 'carl:password1' | chpasswd
+
+RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+    echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config && \
+    echo 'PermitEmptyPasswords no' >> /etc/ssh/sshd_config && \
+    echo 'ChallengeResponseAuthentication no' >> /etc/ssh/sshd_config
+
+COPY backup.sh /usr/local/bin/backup.sh
+RUN chmod +x /usr/local/bin/backup.sh
+
+RUN echo "carl ALL=(ALL) NOPASSWD: /usr/local/bin/backup.sh" >> /etc/sudoers.d/carl && \
+    chmod 0440 /etc/sudoers.d/carl
+
+COPY website/ /usr/share/nginx/html/
+RUN sed -i 's|root /var/www/html;|root /usr/share/nginx/html;|g' /etc/nginx/sites-enabled/default
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 22 80
+
+CMD ["/entrypoint.sh"]

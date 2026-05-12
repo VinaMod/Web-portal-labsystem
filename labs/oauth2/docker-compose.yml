@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  oauth-provider:
+    image: hoangnth101100/oauth-provider:latest
+    hostname: oauth-provider
+
+    ports:
+      - "${webTestPort}:${webTestPort}"
+
+    environment:
+      - PORT=${webTestPort}
+
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - oauth_net
+
+  oauth-client:
+    image: hoangnth101100/oauth-client:latest
+    hostname: oauth-client
+
+    ports:
+      - "${clientTestPort}:80"
+
+    environment:
+      - PROVIDER_URL=http://${LAB_HOST:-192.168.187.99}:${webTestPort}
+      - CLIENT_ID=photoapp
+      - CLIENT_SECRET=photoapp_secret
+      - REDIRECT_URI=http://${LAB_HOST:-192.168.187.99}:${clientTestPort}/callback.php
+      - PROVIDER_HOST=${STACK_NAME}_oauth-provider
+      - BOT_HOST=${STACK_NAME}_admin-bot
+      - BOT_PORT=${webTestPort}
+      - PROVIDER_PORT=${webTestPort}
+      - EMAIL=${email}
+      - TZ=Asia/Ho_Chi_Minh
+      - RANDOM_KEY=${RANDOM_KEY:-undefined}  
+    env_file:
+      - .env      
+    depends_on:
+      - oauth-provider
+
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - oauth_net
+
+  admin-bot:
+    image: hoangnth101100/admin-bot:latest
+    hostname: admin-bot
+
+    environment:
+      - PROVIDER_HOST=${STACK_NAME}_oauth-provider
+      - CLIENT_HOST=${STACK_NAME}_oauth-client
+      - PORT=${webTestPort}
+      - PROVIDER_URL=http://${PROVIDER_HOST}:${webTestPort}
+      - CLIENT_URL=http://${CLIENT_HOST}:80  
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=SuperSecurePassword_2026!@#
+
+    depends_on:
+      - oauth-provider
+      - oauth-client
+
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - oauth_net
+
+networks:
+  oauth_net:
+    driver: overlay

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NET Surveillance | System Info</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="main-wrapper">
+        <header class="top-bar">
+            <div class="logo"><i class="fas fa-video"></i> NET Surveillance HD</div>
+            <nav class="nav-tabs">
+                <a href="/dashboard" class="nav-tab">PREVIEW</a>
+                <a href="/playback" class="nav-tab">PLAYBACK</a>
+                <a href="/log" class="nav-tab">LOGS</a>
+                <a href="/settings" class="nav-tab active">SETTINGS</a>
+            </nav>
+            <div class="user-info">
+                <span>{{ user }}</span>
+                <a href="/logout" class="logout-link">Logout</a>
+            </div>
+        </header>
+
+        <div class="content-container">
+            <aside class="sidebar">
+                <div class="sidebar-header">CONFIG MENU</div>
+                <a href="/info" class="menu-item active"><i class="fas fa-info-circle"></i> System Info</a>
+                <a href="/network" class="menu-item"><i class="fas fa-network-wired"></i> Network Config</a>
+                <a href="/account" class="menu-item"><i class="fas fa-user-lock"></i> Account</a>
+                <a href="/diagnostic" class="menu-item"><i class="fas fa-tools"></i> Diagnostic</a>
+                <a href="/storage" class="menu-item"><i class="fas fa-hdd"></i> Storage</a>
+                <a href="/update" class="menu-item"><i class="fas fa-sync"></i> Firmware Update</a>
+            </aside>
+
+            <main class="main-view">
+                <div class="view-card">
+                    <div class="view-header">
+                        <h2>System Information</h2>
+                    </div>
+                    
+                    <table class="data-table">
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Value</th>
+                        </tr>
+                        <tr>
+                            <td>Device Name</td>
+                            <td>NET_SURVEILLANCE_IP_CAM_01</td>
+                        </tr>
+                        <tr>
+                            <td>Serial Number</td>
+                            <td>NS-2026-XQ-3004812</td>
+                        </tr>
+                        <tr>
+                            <td>Hardware Version</td>
+                            <td>HI3518-V200-EVB</td>
+                        </tr>
+                        <tr>
+                            <td>Software Version</td>
+                            <td>V5.00.R02.20240315</td>
+                        </tr>
+                        <tr>
+                            <td>Build Date</td>
+                            <td>2024-03-15 14:22:10</td>
+                        </tr>
+                        <tr>
+                            <td>MAC Address</td>
+                            <td>00:0C:29:4F:A1:B2</td>
+                        </tr>
+                        <tr>
+                            <td>Cloud Status</td>
+                            <td style="color: var(--success);"><i class="fas fa-cloud-upload-alt"></i> Connected</td>
+                        </tr>
+                        <tr>
+                            <td>NAT Type</td>
+                            <td>Symm. NAT</td>
+                        </tr>
+                    </table>
+                </div>
+            </main>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NET Surveillance | Firmware Update</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="main-wrapper">
+        <header class="top-bar">
+            <div class="logo"><i class="fas fa-video"></i> NET Surveillance HD</div>
+            <nav class="nav-tabs">
+                <a href="/dashboard" class="nav-tab">PREVIEW</a>
+                <a href="/playback" class="nav-tab">PLAYBACK</a>
+                <a href="/log" class="nav-tab">LOGS</a>
+                <a href="/settings" class="nav-tab active">SETTINGS</a>
+            </nav>
+            <div class="user-info">
+                <span>{{ user }}</span>
+                <a href="/logout" class="logout-link">Logout</a>
+            </div>
+        </header>
+
+        <div class="content-container">
+            <aside class="sidebar">
+                <div class="sidebar-header">CONFIG MENU</div>
+                <a href="/info" class="menu-item"><i class="fas fa-info-circle"></i> System Info</a>
+                <a href="/network" class="menu-item"><i class="fas fa-network-wired"></i> Network Config</a>
+                <a href="/account" class="menu-item"><i class="fas fa-user-lock"></i> Account</a>
+                <a href="/diagnostic" class="menu-item"><i class="fas fa-tools"></i> Diagnostic</a>
+                <a href="/storage" class="menu-item"><i class="fas fa-hdd"></i> Storage</a>
+                <a href="/update" class="menu-item active"><i class="fas fa-sync"></i> Firmware Update</a>
+            </aside>
+
+            <main class="main-view">
+                <div class="view-card">
+                    <div class="view-header">
+                        <h2>System Upgrade / Maintenance</h2>
+                    </div>
+                    
+                    <div style="background: rgba(0, 120, 215, 0.1); border-left: 4px solid var(--accent-color); padding: 20px; border-radius: 4px;">
+                        <strong>Current Software:</strong> V5.00.R02.20240315<br>
+                        <strong>Build Date:</strong> 2024-03-05
+                    </div>
+
+                    <div style="margin-top: 40px; text-align: center; border-top: 1px solid #444; padding-top: 40px;">
+                        <button class="btn btn-primary" style="width: auto; padding: 15px 40px;" id="check-update-btn" onclick="checkUpdate()">CHECK FOR UPDATES</button>
+                        
+                        <div id="update-status" style="margin-top: 25px; display: none;">
+                            <i class="fas fa-spinner fa-spin"></i> Checking cloud server...
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 50px; padding: 20px; border: 1px dashed #555; text-align: center;">
+                        <h4 style="margin: 0 0 15px 0;">LOCAL UPGRADE</h4>
+                        <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 20px;">Upload a firmware package (.bin) to manually upgrade the device.</p>
+                        <input type="file" id="fw-file" style="display: none;">
+                        <button class="btn" onclick="document.getElementById('fw-file').click()"><i class="fas fa-upload"></i> SELECT FILE</button>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        function checkUpdate() {
+            const btn = document.getElementById('check-update-btn');
+            const status = document.getElementById('update-status');
+            btn.style.display = 'none';
+            status.style.display = 'block';
+            
+            setTimeout(() => {
+                status.innerHTML = '<span style="color: var(--success);"><i class="fas fa-check"></i> System is up to date.</span>';
+                setTimeout(() => {
+                    btn.style.display = 'inline-block';
+                    status.style.display = 'none';
+                    status.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking cloud server...';
+                }, 3000);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

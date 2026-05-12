@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  web:
+    image: hoangnth101100/idor-lab-web:latest
+    privileged: true
+    cap_add:
+      - SYS_ADMIN
+      - NET_ADMIN
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+
+    ports:
+      - target: 80
+        published: ${webTestPort}
+        mode: host
+
+    volumes:
+      - flag-data:/flag-data
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    environment:
+      - ENV=${ENV:-student_id}
+
+    depends_on:
+      - db
+
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - lab-network
+
+  db:
+    image: hoangnth101100/idor-lab-db:latest
+
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: idor_lab
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+      FORCE_REGENERATE: ${FORCE_REGENERATE:-true}
+      EMAIL: ${EMAIL:-default@example.com}
+      ENV: ${ENV:-student_id}
+      RANDOM_KEY: ${RANDOM_KEY:-}
+      TZ: Asia/Ho_Chi_Minh
+
+    volumes:
+      - flag-data:/docker-entrypoint-initdb.d
+
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - lab-network
+
+volumes:
+  flag-data:
+
+networks:
+  lab-network:
+    driver: overlay

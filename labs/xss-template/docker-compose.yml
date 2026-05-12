@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  web:
+    image: hoangnth101100/xss-web:latest
+    hostname: web-server
+
+    ports:
+      - target: 80
+        published: ${webTestPort}
+        mode: host
+
+    depends_on:
+      - db
+
+    environment:
+      - MYSQL_HOST=db
+      - MYSQL_DATABASE=xss_02_lab
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=root123
+      - XSS_VULN_FIELD=${ENV:-comment}
+      - USER_EMAIL=${USER_EMAIL:-admin@xsslab.local}
+      - RANDOM_KEY=${RANDOM_KEY:-undefined}
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - lab-network
+
+  db:
+    image: hoangnth101100/xss-db:latest
+    hostname: db
+
+    command: [
+      "--character-set-server=utf8mb4",
+      "--collation-server=utf8mb4_unicode_ci",
+      "--skip-character-set-client-handshake",
+      "--default-authentication-plugin=mysql_native_password"
+    ]
+
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+
+    # ❌ bỏ expose DB (khuyến nghị cho lab)
+    # ports:
+    #   - target: 3306
+    #     published: ${dbTestPort}
+    #     mode: host
+
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - lab-network
+
+networks:
+  lab-network:
+    driver: overlay

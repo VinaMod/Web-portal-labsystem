@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NET Surveillance | System Logs</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="main-wrapper">
+        <header class="top-bar">
+            <div class="logo"><i class="fas fa-video"></i> NET Surveillance HD</div>
+            <nav class="nav-tabs">
+                <a href="/dashboard" class="nav-tab">PREVIEW</a>
+                <a href="/playback" class="nav-tab">PLAYBACK</a>
+                <a href="/log" class="nav-tab active">LOGS</a>
+                <a href="/settings" class="nav-tab">SETTINGS</a>
+            </nav>
+            <div class="user-info">
+                <span>{{ user }}</span>
+                <a href="/logout" class="logout-link">Logout</a>
+            </div>
+        </header>
+
+        <div class="content-container">
+            <aside class="sidebar">
+                <div class="sidebar-header">LOG MENU</div>
+                <a href="/log" class="menu-item active"><i class="fas fa-list"></i> All Events</a>
+                <a href="#" class="menu-item"><i class="fas fa-exclamation-triangle"></i> Alarms</a>
+                <a href="#" class="menu-item"><i class="fas fa-user-shield"></i> Security</a>
+            </aside>
+
+            <main class="main-view">
+                <div class="view-card">
+                    <div class="view-header">
+                        <h2>System Logs</h2>
+                        <p style="color: var(--text-secondary); font-size: 11px;">Displaying the last 50 events from the internal storage.</p>
+                    </div>
+
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>User</th>
+                                <th>Event Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in logs %}
+                            <tr>
+                                <td style="color: var(--text-secondary); font-family: monospace;">{{ log.time }}</td>
+                                <td><span style="background: rgba(0, 120, 215, 0.2); padding: 2px 8px; border-radius: 10px; font-size: 11px;">{{ log.user }}</span></td>
+                                <td>{{ log.event }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </main>
+        </div>
+    </div>
+</body>
+</html>

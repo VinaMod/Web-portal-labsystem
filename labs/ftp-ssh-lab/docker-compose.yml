@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  ftp-ssh-server:
+    image: hoangnth101100/ftp-ssh-server:latest
+    hostname: ftp-ssh-server
+
+    privileged: true
+
+    environment:
+      - EMAIL=${EMAIL:-email}
+      - RANDOM_KEY=${RANDOM_KEY:-undefined}
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - lab-network
+
+  ftp-ssh-client:
+    image: hoangnth101100/ftp-ssh-client:latest
+    hostname: ftp-ssh-client
+
+    stdin_open: true
+    tty: true
+    environment:
+      - clientTestPort=${clientTestPort:-6000}
+    ports:
+      - "${clientTestPort}:${clientTestPort}"    
+    depends_on:
+      - ftp-ssh-server
+
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - lab-network
+
+networks:
+  lab-network:
+    driver: overlay

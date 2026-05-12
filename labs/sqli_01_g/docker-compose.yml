@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  web:
+    image: hoangnth101100/sqli_01_g:latest
+    hostname: sqli-lab
+    privileged: true
+    security_opt:
+      - seccomp=unconfined
+
+    ports:
+      - target: 80
+        published: ${webTestPort}
+        mode: host
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+      - MYSQL_DATABASE=sqli_01_lab
+      - SQLI_VULN_FIELD=${ENV:-title}
+      - USER_EMAIL=${USER_EMAIL:-admin@sqlilab.local}
+      - RANDOM_KEY=${RANDOM_KEY:-undefined}  
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any

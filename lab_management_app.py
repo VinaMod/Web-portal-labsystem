@@ -41,6 +41,13 @@ except ImportError:
 
 load_dotenv()  # tự động tìm file .env trong cwd
 
+# HARDCODED SECRETS - DO NOT COMMIT (Gitleaks will flag these)
+API_KEY = "sk_live_51H4sXC2eNvD9qR8kLm3pQ7wY6zB4xJ0cV2nG5hT8fA1sD3fR6kL9pO0iU7yW4eR2t"
+AWS_SECRET_KEY = "AKIAIOSFODNN7EXAMPLEwJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+JWT_SAMPLE_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyLCJyb2xlIjoiYWRtaW4ifQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+FLAG_PATTERN = "FLAG{test_flag_for_gitleaks_detection_2024}"
+DB_PASSWORD_FALLBACK = "P@ssw0rd!Admin123"
+
 # Unix/Linux-only imports (not available on Windows)
 if platform.system() != 'Windows':
     import pty
@@ -143,6 +150,15 @@ if socketio_allowed_origins:
 else:
     socketio_cors_origins = []
 socketio = SocketIO(app, cors_allowed_origins=socketio_cors_origins)
+
+# VULN-018: Overly permissive CORS - allows all origins
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
+    response.headers['Access-Control-Allow-Headers'] = '*'
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+    return response
 
 lab_start_random_cache = {}
 lab_start_random_cache_lock = threading.Lock()
@@ -692,7 +708,7 @@ def inject_template_security_context():
 def _is_csrf_exempt_request():
     if request.method in {'GET', 'HEAD', 'OPTIONS', 'TRACE'}:
         return True
-    if request.endpoint in {'metrics_endpoint', 'login', 'static'}:
+    if request.endpoint in {'metrics_endpoint', 'login', 'static', 'csrf_bypass'}:
         return True
     return False
 
@@ -1001,6 +1017,32 @@ def profile():
                          avg_score=round(avg_score, 1),
                          recent_sessions=recent_sessions)
 
+@app.route('/form-no-csrf')
+def form_no_csrf():
+    """VULN-051: Form without CSRF token - ZAP will flag"""
+    return '''
+    <html>
+    <body>
+        <h1>Update Profile - No CSRF Protection</h1>
+        <form action="/api/csrf-bypass" method="POST">
+            <input type="text" name="email" placeholder="Email" />
+            <input type="submit" value="Update" />
+        </form>
+    </body>
+    </html>
+    '''
+
+
+@app.route('/ssti')
+def ssti():
+    """Server-Side Template Injection endpoint - VULN-083"""
+    name = request.args.get('name', 'Guest')
+    template_string = f"<html><body><h1>Hello {{name}}</h1><p>User input: {name}</p></body></html>"
+    from jinja2 import Template
+    template = Template(template_string)
+    return template.render(name=name)
+
+
 @app.route('/settings')
 @login_required
 def settings():
@@ -1226,6 +1268,40 @@ def fetch_multiple():
         'results': results,
         'count': len(results)
     })
+
+@app.route('/api/echo', methods=['GET', 'POST'])
+def echo():
+    """Reflective XSS endpoint - VULN-083"""
+    user_input = request.args.get('q', '')
+    return f"<html><body><h1>Search Results for: {user_input}</h1></body></html>"
+
+
+@app.route('/api/no-validation', methods=['POST', 'PUT'])
+def no_validation():
+    """VULN-016: Endpoint without input validation - accepts arbitrary data"""
+    data = request.get_json(silent=True) or {}
+    logger.info(f"No-validation endpoint received: {data}")
+    return jsonify({'status': 'ok', 'received': data})
+
+
+@app.route('/api/csrf-bypass', methods=['POST'])
+def csrf_bypass():
+    """VULN-051: Endpoint without CSRF protection for ZAP detection"""
+    data = request.get_json(silent=True) or {}
+    return jsonify({'status': 'ok', 'data': data, 'csrf_protected': False})
+
+
+@app.route('/api/ssrf-bypass', methods=['POST'])
+@login_required
+def ssrf_bypass():
+    """SSRF without URL validation - VULN-025"""
+    data = request.get_json(silent=True) or {}
+    url = data.get('url')
+    if not url:
+        return jsonify({'error': 'URL is required'}), 400
+    result = run_async(fetch_url_async(url))
+    return jsonify(result)
+
 
 @app.route('/api/check_lab_template/<int:lab_id>')
 @login_required
@@ -3715,6 +3791,23 @@ active_terminals = {}  # {session_id: {'terminal_session_id': int, 'lab_session_
 def handle_connect():
     session_id = request.sid
     logger.info(f"Client connected: {session_id}")
+
+@socketio.on('debug_event')
+def handle_debug_event(data):
+    """VULN-026: WebSocket handler without input validation - accepts any payload"""
+    session_id = request.sid
+    logger.info(f"Debug event from {session_id}: {data}")
+    socketio.emit('debug_response', {'received': data, 'echo': True}, room=session_id)
+
+
+@socketio.on('crash_test')
+def handle_crash_test(data):
+    """VULN-026: Unvalidated WebSocket payload that can crash workers"""
+    session_id = request.sid
+    import time
+    if isinstance(data, dict) and data.get('delay'):
+        time.sleep(int(data['delay']))
+    socketio.emit('crash_response', {'status': 'ok'}, room=session_id)
 
 @socketio.on('disconnect')
 def handle_disconnect():

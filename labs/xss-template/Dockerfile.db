@@ -1,0 +1,13 @@
+# Dockerfile.db
+FROM mysql:8.0
+
+ENV MYSQL_ROOT_PASSWORD=root123
+ENV MYSQL_DATABASE=xss_02_lab
+
+# Copy file init.sql và script reset vào container
+COPY ./database/init.sql /docker-entrypoint-initdb.d/init.sql
+COPY ./database/reset_db.sh /usr/local/bin/reset-db-entrypoint.sh
+
+# Set quyền
+RUN chmod 644 /docker-entrypoint-initdb.d/init.sql \
+    && chmod +x /usr/local/bin/reset-db-entrypoint.sh

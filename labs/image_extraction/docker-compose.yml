@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  web:
+    image: hoangnth101100/image-extraction:latest
+
+    ports:
+      - target: 8080
+        published: ${webTestPort}
+        mode: host
+
+    environment:
+      - EMAIL=${EMAIL:-admin@example.com}
+      - RANDOM_KEY=${RANDOM_KEY:-undefined}
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - lab-network
+
+networks:
+  lab-network:
+    driver: overlay

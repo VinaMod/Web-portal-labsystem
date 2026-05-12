@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Home Hub</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="background-orbs">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+    </div>
+    
+    <div class="container glass-panel">
+        <header>
+            <h1>Living Room Light</h1>
+            <p class="subtitle">Secure Device Interface</p>
+        </header>
+        
+        <div class="device-display">
+            <svg id="lightbulb" viewBox="0 0 24 24" fill="none" class="icon-unlocked" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.9 1.2 1.5 1.5 2.5"></path>
+                <path d="M9 18h6"></path>
+                <path d="M10 22h4"></path>
+            </svg>
+            <div id="status-text" class="status">DEVICE LOCKED</div>
+        </div>
+
+        <form id="unlock-form">
+            <div class="input-group">
+                <input type="text" id="pin-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required autocomplete="off">
+            </div>
+            <button type="submit" id="unlock-btn">
+                <span>Unlock Device</span>
+                <div class="spinner" id="btn-spinner" style="display: none;"></div>
+            </button>
+        </form>
+
+        <div id="result-box" class="result-box hidden">
+            <h3 id="result-title">System Verified</h3>
+            <div class="flag-container">
+                <code id="flag-display"></code>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('unlock-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const pin = document.getElementById('pin-input').value;
+            const btn = document.getElementById('unlock-btn');
+            const spinner = document.getElementById('btn-spinner');
+            const resultBox = document.getElementById('result-box');
+            const flagDisplay = document.getElementById('flag-display');
+            const resultTitle = document.getElementById('result-title');
+            const lightbulb = document.getElementById('lightbulb');
+            const statusText = document.getElementById('status-text');
+
+            // UI Loading state
+            btn.classList.add('loading');
+            spinner.style.display = 'block';
+            btn.querySelector('span').style.opacity = '0';
+            resultBox.classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/unlock', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ pin: pin })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Success state
+                    resultBox.classList.remove('hidden');
+                    resultBox.classList.add('success');
+                    resultBox.classList.remove('error');
+                    resultTitle.innerText = "Device Unlocked Successfully!";
+                    flagDisplay.innerText = data.flag;
+                    
+                    lightbulb.classList.add('active');
+                    statusText.innerText = "POWER ON";
+                    statusText.style.color = "var(--success)";
+                } else {
+                    // Error state
+                    resultBox.classList.remove('hidden');
+                    resultBox.classList.add('error');
+                    resultBox.classList.remove('success');
+                    resultTitle.innerText = "Access Denied";
+                    flagDisplay.innerText = "Invalid PIN. Device remains locked.";
+                    
+                    lightbulb.classList.remove('active');
+                    statusText.innerText = "DEVICE LOCKED";
+                    statusText.style.color = "rgba(255,255,255,0.7)";
+                }
+            } catch (error) {
+                console.error("Error:", error);
+            } finally {
+                // Restore button
+                btn.classList.remove('loading');
+                spinner.style.display = 'none';
+                btn.querySelector('span').style.opacity = '1';
+            }
+        });
+    </script>
+</body>
+</html>

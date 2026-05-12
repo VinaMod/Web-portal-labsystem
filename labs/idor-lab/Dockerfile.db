@@ -1,0 +1,17 @@
+FROM mysql:5.7
+
+# MySQL 5.7 uses Oracle Linux, need to use yum
+USER root
+
+RUN yum install -y python3 && \
+    yum clean all
+
+# Copy generator script
+COPY generate_sql.py /setup/generate_sql.py
+COPY docker-entrypoint-db.sh /usr/local/bin/docker-entrypoint-db.sh
+
+RUN chmod +x /usr/local/bin/docker-entrypoint-db.sh
+
+# Use custom entrypoint
+ENTRYPOINT ["docker-entrypoint-db.sh"]
+CMD ["mysqld"]

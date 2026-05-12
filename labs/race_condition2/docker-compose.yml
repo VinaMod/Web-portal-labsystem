@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  web:
+    image: hoangnth101100/race-web:latest
+    privileged: true
+    cap_add:
+      - SYS_ADMIN
+      - NET_ADMIN
+    security_opt:
+      - seccomp=unconfined
+
+    depends_on:
+      - db
+
+    ports:
+      - target: 80
+        published: ${webTestPort}
+        mode: host
+
+    environment:
+      - EMAIL=${EMAIL:-carl@techvision.com}
+      - RANDOM_KEY=${RANDOM_KEY:-undefined}  
+
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - race_net
+
+  db:
+    image: hoangnth101100/race-db:latest
+
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: shop_db
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - race_net
+
+networks:
+  race_net:
+    driver: overlay

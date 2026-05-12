@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FTP Solutions - Quản Trị Hệ Thống Doanh Nghiệp</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #f97316; /* Orange 500 */
+            --primary-dark: #ea580c; /* Orange 600 */
+            --primary-light: #fff7ed; /* Orange 50 */
+            --secondary: #f8fafc;
+            --text-dark: #0f172a;
+            --text-light: #64748b;
+            --border: #e2e8f0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background-color: var(--secondary);
+            color: var(--text-dark);
+            line-height: 1.6;
+        }
+
+        /* Navbar */
+        nav {
+            background-color: white;
+            padding: 1rem 5%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--text-dark);
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: var(--primary);
+        }
+
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            padding: 0.5rem 1.25rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background-color: var(--primary-dark);
+        }
+
+        /* Hero Section */
+        .hero {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 5rem 5%;
+            background: linear-gradient(to right, #ffffff, #fef3c7);
+            min-height: 70vh;
+        }
+
+        .hero-text {
+            flex: 1;
+            padding-right: 3rem;
+        }
+
+        .hero-text h1 {
+            font-size: 3.5rem;
+            line-height: 1.2;
+            margin-bottom: 1.5rem;
+            color: var(--text-dark);
+        }
+
+        .hero-text p {
+            font-size: 1.2rem;
+            color: var(--text-light);
+            margin-bottom: 2rem;
+            max-width: 600px;
+        }
+
+        .hero-image {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+        }
+
+        .hero-image img {
+            width: 100%;
+            max-width: 500px;
+            border-radius: 12px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+
+        /* Features Section */
+        .features {
+            padding: 5rem 5%;
+            background-color: white;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 3rem;
+            color: var(--text-dark);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .card {
+            padding: 2rem;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            background: #ffffff;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+        }
+
+        .card-icon {
+            width: 48px;
+            height: 48px;
+            background-color: var(--primary-light);
+            color: var(--primary);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1rem;
+        }
+
+        .card h3 {
+            font-size: 1.25rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .card p {
+            color: var(--text-light);
+            font-size: 0.95rem;
+        }
+
+        /* Footer */
+        footer {
+            background-color: var(--text-dark);
+            color: #cbd5e1;
+            padding: 3rem 5%;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+        }
+
+        .footer-col h4 {
+            color: white;
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+        }
+
+        .footer-col ul {
+            list-style: none;
+        }
+
+        .footer-col ul li {
+            margin-bottom: 0.5rem;
+        }
+
+        .footer-col ul li a {
+            color: #cbd5e1;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer-col ul li a:hover {
+            color: white;
+        }
+
+        .copyright {
+            background-color: #020617;
+            color: #94a3b8;
+            text-align: center;
+            padding: 1.5rem;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="logo">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                <path d="M2 17l10 5 10-5"></path>
+                <path d="M2 12l10 5 10-5"></path>
+            </svg>
+            FTP Solutions
+        </div>
+        <div class="nav-links">
+            <a href="#">Sản phẩm</a>
+            <a href="#">Giải pháp</a>
+            <a href="#">Tài nguyên</a>
+            <a href="#">Bảng giá</a>
+        </div>
+        <a href="#" class="btn">Cổng Khách hàng</a>
+    </nav>
+
+    <div class="hero">
+        <div class="hero-text">
+            <h1>Nâng Tầm Quản Trị Doanh Nghiệp Của Bạn</h1>
+            <p>Tối ưu hóa hoạt động kinh doanh với nền tảng ERP đám mây và hệ thống đồng bộ tệp tin hàng đầu. Đảm bảo bảo mật, tốc độ và sự ổn định.</p>
+            <div style="display: flex; gap: 1rem;">
+                <a href="#" class="btn" style="padding: 0.75rem 1.5rem; font-size: 1.1rem;">Dùng Thử Miễn Phí</a>
+                <a href="#" class="btn" style="background-color: transparent; color: var(--text-dark); border: 1px solid var(--border);">Liên Hệ Kinh Doanh</a>
+            </div>
+        </div>
+        <div class="hero-image">
+            <img src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Dashboard Analytics">
+        </div>
+    </div>
+
+    <div class="features">
+        <h2 class="section-title">Tại Sao Nên Chọn FTP?</h2>
+        <div class="grid">
+            <div class="card">
+                <div class="card-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                        <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                    </svg>
+                </div>
+                <h3>Tập Trung Dữ Liệu</h3>
+                <p>Đồng bộ hóa tất cả các tệp tin và tài liệu doanh nghiệp trên toàn bộ các chi nhánh ngay lập tức.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                </div>
+                <h3>Bảo Mật Cấp Doanh Nghiệp</h3>
+                <p>Mã hóa chuẩn ngân hàng giúp bảo vệ thông tin khách hàng nhạy cảm và các tài liệu nội bộ mật.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                    </svg>
+                </div>
+                <h3>Cam Kết Uptime 99.9%</h3>
+                <p>Hệ thống máy chủ phân tán tiên tiến đảm bảo các dịch vụ doanh nghiệp luôn hoạt động xuyên suốt.</p>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <div class="footer-col">
+            <div class="logo" style="color: white; margin-bottom: 1rem;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                    <path d="M2 17l10 5 10-5"></path>
+                    <path d="M2 12l10 5 10-5"></path>
+                </svg>
+                FTP Solutions
+            </div>
+            <p style="font-size: 0.9rem;">Kiến tạo tương lai với các giải pháp công nghệ đám mây không giới hạn.</p>
+        </div>
+        <div class="footer-col">
+            <h4>Sản Phẩm</h4>
+            <ul>
+                <li><a href="#">Lưu Trữ Đám Mây</a></li>
+                <li><a href="#">Đồng Bộ Nhóm</a></li>
+                <li><a href="#">API Phân Tích</a></li>
+            </ul>
+        </div>
+        <div class="footer-col">
+            <h4>Công Ty</h4>
+            <ul>
+                <li><a href="#">Về Chúng Tôi</a></li>
+                <li><a href="#">Tuyển Dụng</a></li>
+                <li><a href="#">Hỗ Trợ Kỹ Thuật</a></li>
+            </ul>
+        </div>
+    </footer>
+    <div class="copyright">
+        © 2026 FTP Solutions Corp. Giữ toàn quyền. | Chính sách bảo mật | Điều khoản dịch vụ
+    </div>
+
+</body>
+</html>

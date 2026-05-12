@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authorize &bull; SocialID</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --danger: #ef4444;
+            --danger-hover: #dc2626;
+            --bg-gradient: linear-gradient(135deg, #1e1e24 0%, #2d2d3a 100%);
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --text-main: #ffffff;
+            --text-muted: #94a3b8;
+            --border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: var(--bg-gradient);
+            color: var(--text-main);
+        }
+
+        .auth-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            padding: 2.5rem;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            width: 100%;
+            max-width: 480px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+
+        .app-icon-wrapper {
+            margin-bottom: 2rem;
+            position: relative;
+            display: inline-block;
+        }
+
+        .app-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            color: white;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+            margin: 0 auto;
+        }
+
+        .connection-line {
+            height: 2px;
+            width: 100px;
+            background: var(--border);
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: -1;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin: 0 0 1rem 0;
+            font-weight: 700;
+        }
+
+        .auth-desc {
+            color: var(--text-muted);
+            line-height: 1.6;
+            margin-bottom: 2rem;
+        }
+
+        .auth-desc strong {
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .scope-list {
+            text-align: left;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            border: 1px solid var(--border);
+        }
+
+        .scope-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .scope-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .scope-icon {
+            color: #10b981;
+            font-size: 1.2rem;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+            padding: 0.75rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 50px;
+            width: fit-content;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .avatar {
+            width: 32px;
+            height: 32px;
+            background: var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+        }
+
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        button {
+            padding: 1rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-allow {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-allow:hover {
+            background: var(--primary-hover);
+        }
+
+        .btn-deny {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        .btn-deny:hover {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border-color: var(--danger);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="auth-card">
+        <div class="app-icon-wrapper">
+            <div class="app-icon">
+                <i class="fas fa-camera-retro"></i>
+            </div>
+        </div>
+
+        <h2>Authorization Request</h2>
+
+        <p class="auth-desc">
+            <strong>
+                <%= client_id %>
+            </strong> would like to access your SocialID account information.
+        </p>
+
+        <div class="user-info">
+            <div class="avatar">
+                <i class="fas fa-user"></i>
+            </div>
+            <span>
+                <%= user.name %>
+            </span>
+        </div>
+
+        <div class="scope-list">
+            <div class="scope-item">
+                <i class="fas fa-check-circle scope-icon"></i>
+                <div>
+                    <div style="font-weight: 600; font-size: 0.9rem;">View your public profile</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">Name, username, and role</div>
+                </div>
+            </div>
+        </div>
+
+        <form method="POST" action="/auth/approve">
+            <input type="hidden" name="client_id" value="<%= client_id %>">
+            <input type="hidden" name="redirect_uri" value="<%= redirect_uri %>">
+            <input type="hidden" name="state" value="<%= locals.state %>">
+
+            <div class="btn-group">
+                <button type="submit" name="approve" value="no" class="btn-deny">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="submit" name="approve" value="yes" class="btn-allow">
+                    <i class="fas fa-check"></i> Authorize
+                </button>
+            </div>
+        </form>
+
+        <p style="margin-top: 2rem; font-size: 0.8rem; color: var(--border);">
+            <i class="fas fa-lock"></i> Redirecting to: <span style="font-family: monospace;">
+                <%= redirect_uri %>
+            </span>
+        </p>
+    </div>
+</body>
+
+</html>

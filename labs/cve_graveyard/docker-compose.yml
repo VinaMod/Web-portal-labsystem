@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  web:
+    image: hoangnth101100/cve_graveyard:latest
+
+    ports:
+      - "${webTestPort}:8080"
+
+    environment:
+      - EMAIL=${EMAIL:-admin@example.com}
+      - RANDOM_KEY=${RANDOM_KEY:-undefined}
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - lab-network
+
+networks:
+  lab-network:
+    driver: overlay

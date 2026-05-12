@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NET Surveillance | HDD Management</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="main-wrapper">
+        <header class="top-bar">
+            <div class="logo"><i class="fas fa-video"></i> NET Surveillance HD</div>
+            <nav class="nav-tabs">
+                <a href="/dashboard" class="nav-tab">PREVIEW</a>
+                <a href="/playback" class="nav-tab">PLAYBACK</a>
+                <a href="/log" class="nav-tab">LOGS</a>
+                <a href="/settings" class="nav-tab active">SETTINGS</a>
+            </nav>
+            <div class="user-info">
+                <span>{{ user }}</span>
+                <a href="/logout" class="logout-link">Logout</a>
+            </div>
+        </header>
+
+        <div class="content-container">
+            <aside class="sidebar">
+                <div class="sidebar-header">CONFIG MENU</div>
+                <a href="/info" class="menu-item"><i class="fas fa-info-circle"></i> System Info</a>
+                <a href="/network" class="menu-item"><i class="fas fa-network-wired"></i> Network Config</a>
+                <a href="/account" class="menu-item"><i class="fas fa-user-lock"></i> Account</a>
+                <a href="/diagnostic" class="menu-item"><i class="fas fa-tools"></i> Diagnostic</a>
+                <a href="/storage" class="menu-item active"><i class="fas fa-hdd"></i> Storage</a>
+                <a href="/update" class="menu-item"><i class="fas fa-sync"></i> Firmware Update</a>
+            </aside>
+
+            <main class="main-view">
+                <div class="view-card">
+                    <div class="view-header">
+                        <h2>Hard Disk Management</h2>
+                    </div>
+                    
+                    <div style="background: #111; padding: 20px; border-radius: 4px; margin-bottom: 25px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span>Total Capacity: 500GB</span>
+                            <span>Free Space: 120GB</span>
+                        </div>
+                        <div style="height: 10px; background: #333; border-radius: 5px; overflow: hidden;">
+                            <div style="width: 76%; height: 100%; background: var(--accent-color);"></div>
+                        </div>
+                    </div>
+
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>HDD ID</th>
+                                <th>Status</th>
+                                <th>Capability</th>
+                                <th>Free Space</th>
+                                <th>Record Period</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Device 1 (SATA)</td>
+                                <td style="color: var(--success);"><i class="fas fa-check-circle"></i> Normal</td>
+                                <td>465.76 GB</td>
+                                <td>112.45 GB</td>
+                                <td>08/03/2026 - 05/04/2026</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <div style="margin-top: 30px; text-align: left;">
+                        <button class="btn btn-primary" style="width: auto; background: var(--danger); border: none;" onclick="alert('Formatting is disabled for this educational lab.')">FORMAT DISK</button>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+</body>
+</html>

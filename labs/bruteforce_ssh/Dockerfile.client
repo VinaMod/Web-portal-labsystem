@@ -1,0 +1,48 @@
+FROM ubuntu:22.04
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    hydra \
+    nmap \
+    openssh-client \
+    vim \
+    nano \
+    sudo \
+    net-tools \
+    iputils-ping \
+    wget \
+    gzip \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install ttyd
+RUN wget -O /usr/local/bin/ttyd \
+    https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.x86_64 && \
+    chmod +x /usr/local/bin/ttyd
+
+RUN mkdir -p /usr/share/wordlists
+
+RUN useradd -m -s /bin/bash admin && \
+    echo 'admin:admin123' | chpasswd && \
+    usermod -aG sudo admin
+
+WORKDIR /home/admin
+
+COPY banner.sh /home/admin/banner.sh
+RUN chmod +x /home/admin/banner.sh
+
+RUN echo "" >> /home/admin/.bashrc && \
+    echo "if [ -f /home/admin/banner.sh ]; then" >> /home/admin/.bashrc && \
+    echo "    /home/admin/banner.sh" >> /home/admin/.bashrc && \
+    echo "fi" >> /home/admin/.bashrc
+
+# Entry point
+COPY entrypoint-client.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+RUN chown -R admin:admin /home/admin
+
+USER admin
+
+ENTRYPOINT ["/entrypoint.sh"]

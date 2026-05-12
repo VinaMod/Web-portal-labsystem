@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  smb-server:
+    image: hoangnth101100/smb-server:latest
+    hostname: smb-target
+
+    environment:
+      - EMAIL=${EMAIL:-sysadmin@securecorp.com}
+      - RANDOM_KEY=${RANDOM_KEY:-undefined}
+    ports:
+      - target: 80
+        published: ${webTestPort}
+        mode: host
+
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - lab-network
+
+  smb-client:
+    image: hoangnth101100/smb-client:latest
+    hostname: client
+
+    stdin_open: true
+    tty: true
+    environment:
+      - clientTestPort=${clientTestPort:-6000}
+    ports:
+      - "${clientTestPort}:${clientTestPort}"    
+    depends_on:
+      - smb-server
+
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.labnode == ${TARGET_NODE}
+      restart_policy:
+        condition: any
+
+    networks:
+      - lab-network
+
+networks:
+  lab-network:
+    driver: overlay

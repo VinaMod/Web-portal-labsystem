@@ -1,0 +1,323 @@
+:root {
+    --bg-body: #f5f5f5;
+    --bg-white: #ffffff;
+    --text-main: #333333;
+    --text-light: #666666;
+    --accent: #000000;
+    /* Fashion minimalist black */
+    --accent-hover: #444444;
+    --border: #e0e0e0;
+    --success: #28a745;
+    --danger: #dc3545;
+    --font-main: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+body {
+    font-family: var(--font-main);
+    background-color: var(--bg-body);
+    color: var(--text-main);
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* Navbar */
+.navbar {
+    background: var(--bg-white);
+    padding: 1rem 5%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.brand {
+    font-size: 1.5rem;
+    font-weight: 900;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.nav-right {
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.nav-right a {
+    margin-left: 1rem;
+    color: var(--text-main);
+    text-decoration: none;
+}
+
+.nav-right a:hover {
+    text-decoration: underline;
+}
+
+/* Hero */
+.hero {
+    background: #000;
+    color: #fff;
+    padding: 4rem 1rem;
+    text-align: center;
+    margin-bottom: 3rem;
+}
+
+.hero h1 {
+    font-size: 3rem;
+    margin: 0 0 1rem;
+    font-weight: 300;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.hero p {
+    opacity: 0.8;
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+/* Grid */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1rem 4rem;
+}
+
+.product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+}
+
+.product-card {
+    background: var(--bg-white);
+    transition: transform 0.3s ease;
+    cursor: pointer;
+    position: relative;
+    border: 1px solid transparent;
+}
+
+.product-card:hover {
+    transform: translateY(-5px);
+    border-color: var(--border);
+}
+
+.product-img {
+    height: 350px;
+    background-color: #eee;
+    background-size: cover;
+    background-position: center;
+    position: relative;
+}
+
+.product-details {
+    padding: 1.5rem 0;
+    text-align: center;
+}
+
+.p-name {
+    font-weight: 700;
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+}
+
+.p-price {
+    color: var(--text-light);
+    font-size: 1rem;
+}
+
+.btn-buy {
+    margin-top: 1rem;
+    padding: 0.8rem 2rem;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-buy:hover {
+    background: var(--accent-hover);
+}
+
+/* Modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.modal-open {
+    display: flex;
+    opacity: 1;
+}
+
+.modal-content {
+    background: #fff;
+    padding: 2.5rem;
+    width: 100%;
+    max-width: 500px;
+    position: relative;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    transform: translateY(20px);
+    transition: transform 0.3s;
+}
+
+.modal-open .modal-content {
+    transform: translateY(0);
+}
+
+.close-modal {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #999;
+}
+
+.close-modal:hover {
+    color: #000;
+}
+
+/* Form Styles for Modal & Login */
+input[type="text"],
+input[type="password"] {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--border);
+    margin-bottom: 1rem;
+    box-sizing: border-box;
+    font-family: inherit;
+    font-size: 1rem;
+}
+
+input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+/* Login/Register Specific */
+.auth-wrapper {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #f0f2f5;
+}
+
+.auth-card {
+    background: #fff;
+    padding: 3rem;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    text-align: center;
+}
+
+.auth-title {
+    margin-top: 0;
+    margin-bottom: 2rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.auth-btn {
+    width: 100%;
+    padding: 12px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.auth-links {
+    margin-top: 1.5rem;
+    font-size: 0.9rem;
+}
+
+.auth-links a {
+    color: var(--text-light);
+}
+
+/* Flag Box */
+.flag-display {
+    margin-top: 1.5rem;
+    background: #000;
+    color: #0f0;
+    font-family: monospace;
+    padding: 1rem;
+    word-break: break-all;
+}
+
+/* Toast Notification */
+.toast-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.toast {
+    background: #333;
+    color: #fff;
+    padding: 12px 24px;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    animation: slideIn 0.3s ease forwards;
+    min-width: 250px;
+    font-size: 0.9rem;
+}
+
+.toast.success {
+    border-left: 4px solid var(--success);
+}
+
+.toast.error {
+    border-left: 4px solid var(--danger);
+}
+
+.toast.info {
+    border-left: 4px solid var(--primary-color);
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeOut {
+    to {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+}

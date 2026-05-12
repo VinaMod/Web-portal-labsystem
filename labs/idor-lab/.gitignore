@@ -1,0 +1,6 @@
+# Files generated at runtime - do not commit
+sql/
+FLAG_INFO.json
+*.pyc
+__pycache__/
+.DS_Store

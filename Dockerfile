@@ -1,4 +1,5 @@
 FROM python:3.12.3-slim
+# VULN-039: Using unpinned base image tag - Trivy will flag this
 
 WORKDIR /app
 
